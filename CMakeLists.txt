@@ -26,6 +26,7 @@ set(SANITIZER_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer)
 add_executable(tests
     tests/test_main.cpp
     tests/test_basic.cpp
+    tests/test_avl.cpp
 )
 target_link_libraries(tests PRIVATE trees)
 target_compile_options(tests PRIVATE ${WARNING_FLAGS})

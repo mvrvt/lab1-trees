@@ -2,26 +2,15 @@
 #include <string>
 
 #include "TestFramework.hpp"
+#include "TestHelpers.hpp"
 #include "tree/BinarySearchTree.hpp"
 
 namespace {
 
+using test::LiveCounter;
+using test::MakeShuffled;
+
 // ---------- Вспомогательные типы ----------
-
-// Считает, сколько объектов сейчас "живо". Если после удаления дерева
-// alive != 0 - где-то утечка (или, наоборот, двойное удаление).
-// На Mac AddressSanitizer не ищет утечки, а этот счётчик работает везде.
-struct LiveCounter {
-    static inline int alive = 0;
-    int value;
-
-    LiveCounter(int new_value) : value(new_value) { ++alive; }
-    LiveCounter(const LiveCounter& other) : value(other.value) { ++alive; }
-    LiveCounter& operator=(const LiveCounter& other) = default;
-    ~LiveCounter() { --alive; }
-
-    bool operator<(const LiveCounter& other) const { return value < other.value; }
-};
 
 // Запись "ключ -> данные", сравнивается только по ключу.
 // Так в ЛР2 будет устроен словарь: Find по ключу возвращает всю запись.
@@ -31,22 +20,6 @@ struct Record {
 
     bool operator<(const Record& other) const { return key < other.key; }
 };
-
-// Детерминированная "случайная" перестановка 0..n-1 (одинаковая при каждом запуске)
-DynamicArray<int> MakeShuffled(int n) {
-    DynamicArray<int> values;
-    for (int i = 0; i < n; ++i)
-        values.Append(i);
-    unsigned int seed = 12345;
-    for (int i = n - 1; i > 0; --i) {
-        seed = seed * 1103515245u + 12345u; // линейный конгруэнтный генератор
-        int j = static_cast<int>(seed % static_cast<unsigned int>(i + 1));
-        int temp = values[static_cast<std::size_t>(i)];
-        values[static_cast<std::size_t>(i)] = values[static_cast<std::size_t>(j)];
-        values[static_cast<std::size_t>(j)] = temp;
-    }
-    return values;
-}
 
 // Дерево для большинства тестов (корень 5):
 //
@@ -188,10 +161,10 @@ void TestManyInsertsAndRemoves() {
 }
 
 void TestDegenerateTree() {
-    // Отсортированный вход -> "палка": высота равна числу элементов.
-    // Именно этот случай исправит балансировка (следующий шаг).
+    // Без балансировки отсортированный вход даёт "палку": высота равна числу элементов.
+    // Как это исправляет AVL - см. test_avl.cpp.
     const int n = 5000;
-    BinarySearchTree<int> tree;
+    BinarySearchTree<int> tree(Balancing::kNone);
     for (int i = 0; i < n; ++i)
         tree.Insert(i);
     CHECK(tree.GetHeight() == static_cast<std::size_t>(n));
