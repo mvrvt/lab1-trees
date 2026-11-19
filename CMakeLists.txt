@@ -22,11 +22,21 @@ target_include_directories(trees INTERFACE ${CMAKE_SOURCE_DIR}/include)
 set(WARNING_FLAGS -Wall -Wextra -Wpedantic)
 set(SANITIZER_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer)
 
+# ---------- Программа (пока демонстрация, потом - консольный интерфейс) ----------
+add_executable(lab1 src/main.cpp)
+target_link_libraries(lab1 PRIVATE trees)
+target_compile_options(lab1 PRIVATE ${WARNING_FLAGS})
+if(ENABLE_SANITIZERS)
+    target_compile_options(lab1 PRIVATE ${SANITIZER_FLAGS})
+    target_link_options(lab1 PRIVATE ${SANITIZER_FLAGS})
+endif()
+
 # ---------- Тесты ----------
 add_executable(tests
     tests/test_main.cpp
     tests/test_basic.cpp
     tests/test_avl.cpp
+    tests/test_traversal.cpp
 )
 target_link_libraries(tests PRIVATE trees)
 target_compile_options(tests PRIVATE ${WARNING_FLAGS})

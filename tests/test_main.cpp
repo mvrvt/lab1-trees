@@ -5,6 +5,7 @@
 // Группы тестов, каждая - в своём файле
 void RunBasicTests();
 void RunAvlTests();
+void RunTraversalTests();
 
 int main() {
     std::cout << "=== BinarySearchTree: basic operations ===\n";
@@ -12,6 +13,9 @@ int main() {
 
     std::cout << "\n=== BinarySearchTree: AVL balancing ===\n";
     RunAvlTests();
+
+    std::cout << "\n=== BinarySearchTree: traversals, iterator, index ===\n";
+    RunTraversalTests();
 
     return test::PrintSummary();
 }
