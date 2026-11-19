@@ -7,6 +7,7 @@ void RunBasicTests();
 void RunAvlTests();
 void RunTraversalTests();
 void RunThreadingTests();
+void RunFunctionalTests();
 
 int main() {
     std::cout << "=== BinarySearchTree: basic operations ===\n";
@@ -20,6 +21,9 @@ int main() {
 
     std::cout << "\n=== BinarySearchTree: threading ===\n";
     RunThreadingTests();
+
+    std::cout << "\n=== BinarySearchTree: map, where, reduce ===\n";
+    RunFunctionalTests();
 
     return test::PrintSummary();
 }

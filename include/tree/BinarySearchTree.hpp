@@ -298,6 +298,50 @@ public:
             visit(node->value);
     }
 
+    // ---------- map, where, reduce ----------
+    // func / predicate - функция, лямбда или указатель на функцию (шаблон принимает всё).
+    // Исходное дерево не меняется. Режим балансировки результата - как у исходного.
+
+    // Новое дерево из значений func(x) для каждого x. O(n log n) для AVL.
+    // U - тип элементов результата, по умолчанию T: tree.Map(f).
+    // Можно получить дерево другого типа: tree.Map<std::string>(f).
+    // - Новое дерево строится вставками, а не копированием формы: func может
+    //   нарушить порядок (f(x) = -x разворачивает его).
+    // - Элементов может стать меньше: если f склеивает значения (f(x) = x / 10),
+    //   одинаковые результаты в множестве хранятся один раз.
+    // - Вставка в порядке КЛП (родители раньше детей): для возрастающей f и режима kNone
+    //   форма дерева сохраняется, а вставка по возрастанию выродила бы его в "палку".
+    template <typename U = T, typename Func>
+    BinarySearchTree<U> Map(Func func) const {
+        BinarySearchTree<U> result(balancing_);
+        Traverse(TraversalOrder::kNLR, [&result, &func](const T& value) { result.Insert(func(value)); });
+        return result;
+    }
+
+    // Новое дерево из тех x, для которых predicate(x) == true. O(n log n) для AVL.
+    // Порядок вставки КЛП: Where(всегда true) для kNone повторяет форму исходного дерева.
+    template <typename Func>
+    BinarySearchTree<T> Where(Func predicate) const {
+        BinarySearchTree<T> result(balancing_);
+        Traverse(TraversalOrder::kNLR, [&result, &predicate](const T& value) {
+            if (predicate(value))
+                result.Insert(value);
+        });
+        return result;
+    }
+
+    // Свёртка, как в ТЗ: reduce(f, [a1, ..., an], c) = f(an, f(a(n-1), ... f(a2, f(a1, c))...)).
+    // То есть func(элемент, накопленное) -> новое накопленное, начиная с initial.
+    // Элементы берутся в порядке order (по умолчанию ЛКП - по возрастанию). O(n).
+    // T2 - тип результата, выводится из initial: сумма int в long long - Reduce(f, 0LL).
+    // Для пустого дерева возвращает initial.
+    template <typename T2, typename Func>
+    T2 Reduce(Func func, T2 initial, TraversalOrder order = TraversalOrder::kLNR) const {
+        T2 accumulator = std::move(initial);
+        Traverse(order, [&accumulator, &func](const T& value) { accumulator = func(value, accumulator); });
+        return accumulator;
+    }
+
     // ---------- Изменение ----------
 
     // true - вставили, false - такое значение уже было (дерево не изменилось)
