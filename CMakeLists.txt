@@ -37,6 +37,7 @@ add_executable(tests
     tests/test_basic.cpp
     tests/test_avl.cpp
     tests/test_traversal.cpp
+    tests/test_threading.cpp
 )
 target_link_libraries(tests PRIVATE trees)
 target_compile_options(tests PRIVATE ${WARNING_FLAGS})

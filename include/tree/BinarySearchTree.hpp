@@ -23,6 +23,10 @@ struct TreeNode {
     std::unique_ptr<TreeNode<T>> right; 
     int height = 1; // высота поддерева с корнем в этом узле (лист - 1).
     std::size_t size = 1; // число узлов в этом поддереве (лист - 1).
+    // Прошивка: следующий узел в порядке выбранного обхода (nullptr - последний).
+    // НЕ владеющий указатель: узлами владеют unique_ptr left/right, next только "смотрит".
+    // Имеет смысл, только пока дерево прошито (см. BinarySearchTree::Thread).
+    TreeNode<T>* next = nullptr;
 
     explicit TreeNode(const T& new_value) : value(new_value) {}
 };
@@ -104,15 +108,25 @@ public:
 
 
     // Deep copy
-    BinarySearchTree(const BinarySearchTree<T>& other) 
-        : root_(CopySubtree(other.root_.get())), size_(other.size_), balancing_(other.balancing_) {}
+    // Указатели next копировать нельзя: они смотрели бы в узлы ДРУГОГО дерева.
+    // Поэтому, если оригинал был прошит, копия прошивается заново в том же порядке.
+    BinarySearchTree(const BinarySearchTree<T>& other)
+        : root_(CopySubtree(other.root_.get())), size_(other.size_), balancing_(other.balancing_) {
+        if (other.is_threaded_)
+            Thread(other.thread_order_);
+    }
     //TODO: Как мы получаем значение триноды по root_.get()? Где мы писал метод get() для триноды?
 
     //TODO: Спросить у кого-нибудь будет ли код без не сильно нужных {} оцениваться как максимально чистый?
 
-    BinarySearchTree(BinarySearchTree<T>&& other) noexcept 
-        : root_(std::move(other.root_)), size_(other.size_), balancing_(other.balancing_) {
+    // При перемещении узлы остаются на своих местах в памяти (переезжает только root_),
+    // поэтому прошивка остаётся верной и переходит вместе с узлами.
+    BinarySearchTree(BinarySearchTree<T>&& other) noexcept
+        : root_(std::move(other.root_)), size_(other.size_), balancing_(other.balancing_),
+          thread_head_(other.thread_head_), thread_order_(other.thread_order_),
+          is_threaded_(other.is_threaded_) {
         other.size_ = 0;
+        other.ResetThreading();
     }
 
     // Copy-and-swap: если копирование бросит исключение, *this не изменится
@@ -138,7 +152,7 @@ public:
     std::size_t GetCount() const override { return size_; }
     Balancing GetBalancing() const { return balancing_; }
 
-    // Высота: пустое дерево - 0, один узел - 1. Пока O(n), с AVL станет O(1)
+    // Высота: пустое дерево - 0, один узел - 1. O(1): высота хранится в корне
     std::size_t GetHeight() const { return static_cast<std::size_t>(Height(root_.get())); }
 
     // ---------- Поиск ----------
@@ -215,7 +229,8 @@ public:
     // visit - функция или лямбда вида void visit(const T& value). O(n).
     template <typename Func> //TODO: В твоем коде было написано template <class Func>, имеет ли значение писать по-твоему или можно записать с typename вместо class? 
     void Traverse(TraversalOrder order, Func visit) const {
-        TraverseNodes(root_.get(), order, [&visit](const Node* node) { visit(node->value); });
+        const Node* root = root_.get();
+        TraverseNodes(root, order, [&visit](const Node* node) { visit(node->value); });
     }
 
     // Все значения в заданном порядке (по умолчанию ЛКП - по возрастанию). O(n).
@@ -230,21 +245,78 @@ public:
     // делает это сам - см. EnumeratorIterator в IEnumerable.hpp
     IEnumerator<T>* GetEnumerator() const override { return new TreeEnumerator(root_.get()); }
 
+    // ---------- Прошивка ----------
+    // Узлы связываются в цепочку через next в порядке обхода order (любой из 6).
+    // После этого обход идёт по цепочке: без стека и без рекурсии, каждый шаг строго O(1),
+    // и начать его можно с любого узла (основа поиска по диапазону в ЛР-2).
+    // Любое изменение дерева (Insert, Remove, Clear) прошивку сбрасывает:
+    // повороты AVL меняют форму, а с ней порядки КЛП, ЛПК и др. Нужно вызвать Thread снова.
+
+    // Прошить дерево в заданном порядке. O(n) время, O(h) память (на время прошивки).
+    void Thread(TraversalOrder order) {
+        Node* previous = nullptr;
+        thread_head_ = nullptr;
+        TraverseNodes(root_.get(), order, [this, &previous](Node* node) {
+            node->next = nullptr;
+            if (previous == nullptr)
+                thread_head_ = node; // первый узел цепочки
+            else
+                previous->next = node;
+            previous = node;
+        });
+        thread_order_ = order;
+        is_threaded_ = true;
+    }
+
+    bool IsThreaded() const { return is_threaded_; }
+
+    // Порядок, в котором дерево прошито. Бросает TreeNotThreaded, если не прошито.
+    TraversalOrder GetThreadOrder() const {
+        CheckThreaded();
+        return thread_order_;
+    }
+
+    // Обход по прошивке: visit(значение) для каждого узла в порядке прошивки.
+    // O(n) время, O(1) дополнительной памяти. Бросает TreeNotThreaded, если не прошито.
+    template <typename Func>
+    void TraverseThreaded(Func visit) const {
+        CheckThreaded();
+        for (const Node* node = thread_head_; node != nullptr; node = node->next)
+            visit(node->value);
+    }
+
+    // То же, но начиная с узла, равного start (сам start тоже посещается).
+    // O(h) на поиск узла + O(1) на каждый следующий.
+    // Бросает TreeNotThreaded, если не прошито, и ElementNotFound, если start нет в дереве.
+    template <typename Func>
+    void TraverseThreadedFrom(const T& start, Func visit) const {
+        CheckThreaded();
+        const Node* node = FindNode(start);
+        if (node == nullptr)
+            throw ElementNotFound("BinarySearchTree::TraverseThreadedFrom: element not found");
+        for (; node != nullptr; node = node->next)
+            visit(node->value);
+    }
+
     // ---------- Изменение ----------
 
     // true - вставили, false - такое значение уже было (дерево не изменилось)
     bool Insert(const T& value) {
         bool inserted = InsertInto(root_, value);
-        if (inserted)
+        if (inserted) {
             ++size_;
+            ResetThreading(); // дерево изменилось - прошивка устарела
+        }
         return inserted;
     }
 
     // true - удалили, false - такого значения не было
     bool Remove(const T& value) {
         bool removed = RemoveFrom(root_, value);
-        if (removed) 
+        if (removed) {
             --size_;
+            ResetThreading(); // иначе в цепочке остался бы next на удалённый узел
+        }
         return removed;
     }
 
@@ -267,12 +339,16 @@ public:
             // здесь node удаляется, но детей у него уже нет -> рекурсии нет
         }
         size_ = 0;
+        ResetThreading();
     }
 
     void Swap(BinarySearchTree<T>& other) noexcept {
         std::swap(root_, other.root_);
         std::swap(size_, other.size_);
         std::swap(balancing_, other.balancing_);
+        std::swap(thread_head_, other.thread_head_);
+        std::swap(thread_order_, other.thread_order_);
+        std::swap(is_threaded_, other.is_threaded_);
     }
 
     // ---------- Печать структуры ---------- //TODO: Может сразу сделаем так, чтобы дерево выводилось правильно? То есть корень посередине сверху, левое поддерево слева, а правое - справа
@@ -311,6 +387,18 @@ private:
             throw EmptyCollection("BinarySearchTree: tree is empty");
     }
 
+    void CheckThreaded() const {
+        if (!is_threaded_)
+            throw TreeNotThreaded("BinarySearchTree: tree is not threaded (call Thread first)");
+    }
+
+    // Старые next в узлах не стираем (это O(n)): пока is_threaded_ == false, их никто не читает,
+    // а Thread перезаписывает next у каждого узла.
+    void ResetThreading() noexcept {
+        thread_head_ = nullptr;
+        is_threaded_ = false;
+    }
+
     // Поиск без рекурсии: на каждом шаге уходим влево или вправо - O(h).
     const Node* FindNode(const T& value) const {
         const Node* node = root_.get();
@@ -327,11 +415,13 @@ private:
 
     // Обход в любом из 6 порядков БЕЗ рекурсии, со своим стеком.
     // Для каждого узла в стеке помним, сколько из трёх его действий (К, Л, П) уже сделано.
-    // visit вызывается с указателем на узел - это пригодится для прошивки (шаг 4).
-    template <typename Func>
-    static void TraverseNodes(const Node* root, TraversalOrder order, Func visit) {
+    // visit вызывается с указателем на узел.
+    // NodePtr - тип указателя: const Node* (для обходов только чтения)
+    // или Node* (для Thread, которая записывает в узлы next).
+    template <typename NodePtr, typename Func>
+    static void TraverseNodes(NodePtr root, TraversalOrder order, Func visit) {
         struct Frame {
-            const Node* node = nullptr;
+            NodePtr node = nullptr;
             int done_steps = 0;
         };
         const TraversalSteps order_steps = GetTraversalSteps(order);
@@ -347,7 +437,7 @@ private:
             }
             // Копируем всё нужное ДО Append: при росте массива ссылка top
             // станет висячей (старый буфер удаляется)
-            const Node* node = top.node;
+            NodePtr node = top.node;
             TraversalStep step = order_steps.steps[top.done_steps];
             ++top.done_steps;
 
@@ -562,4 +652,9 @@ private:
     std::unique_ptr<Node> root_; // по умолчанию = nullptr
     std::size_t size_ = 0;
     Balancing balancing_ = Balancing::kAvl;
+
+    // Прошивка
+    Node* thread_head_ = nullptr;                         // первый узел цепочки next
+    TraversalOrder thread_order_ = TraversalOrder::kLNR;  // в каком порядке прошито
+    bool is_threaded_ = false;                            // цепочка соответствует дереву
 };
