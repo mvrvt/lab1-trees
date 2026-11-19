@@ -11,7 +11,10 @@
 #include "lab2_files/ICollection.hpp"
 #include "lab2_files/IEnumerable.hpp"
 #include "tree/TreeExceptions.hpp"
+#include "tree/TreeFormat.hpp"
+#include "tree/TreeParser.hpp"
 #include "tree/Traversal.hpp"
+#include "tree/ValueIo.hpp"
 
 // Узел дерева.
 // Владение: родитель ВЛАДЕЕТ детьми через std::unique_ptr
@@ -340,6 +343,68 @@ public:
         T2 accumulator = std::move(initial);
         Traverse(order, [&accumulator, &func](const T& value) { accumulator = func(value, accumulator); });
         return accumulator;
+    }
+
+    // ---------- Сохранение в строку и чтение из строки ----------
+
+    // Сохранить дерево в строку по формату (см. TreeFormat.hpp), например:
+    //   дерево 5 / 3 8, формат "{К}(Л)[П]"  ->  "{5}({3}()[])[{8}()[]]"
+    //   то же дерево, формат "(Л){К}[П]"    ->  "((){3}[]){5}[(){8}[]]"
+    // Пустое поддерево - пустые скобки, пустое дерево - пустая строка.
+    // Закрывающая скобка К и '\' внутри значений экранируются через '\'.
+    // Бросает TreeFormatError, если формат неверный. O(n), без рекурсии.
+    std::string ToFormattedString(const std::string& format = kDefaultTreeFormat) const {
+        const TreeFormat parsed = ParseTreeFormat(format);
+        std::string result;
+
+        // Как в TraverseNodes: для узла помним, сколько групп формата уже выведено
+        struct Frame {
+            const Node* node;
+            std::size_t done_parts;
+        };
+        DynamicArray<Frame> stack;
+        if (root_)
+            stack.Append(Frame{root_.get(), 0});
+        while (!stack.IsEmpty()) {
+            Frame& top = stack.GetLast();
+            if (top.done_parts == 3) {
+                stack.RemoveLast();
+                // Узел выведен целиком - значит, закончилось поддерево родителя:
+                // закрываем ту группу родителя, внутри которой мы были
+                if (!stack.IsEmpty())
+                    result += parsed.parts[stack.GetLast().done_parts - 1].close;
+                continue;
+            }
+            const Node* node = top.node; // копируем до Append (см. TraverseNodes)
+            const FormatPart part = parsed.parts[top.done_parts];
+            ++top.done_parts;
+
+            result += part.open;
+            if (part.step == TraversalStep::kNode) {
+                result += EscapeText(ToText(node->value), part.close);
+                result += part.close;
+                continue;
+            }
+            const Node* child = (part.step == TraversalStep::kLeft) ? node->left.get() : node->right.get();
+            if (child != nullptr)
+                stack.Append(Frame{child, 0}); // скобку закроем, когда ребёнок закончится
+            else
+                result += part.close;          // пустое поддерево: "()"
+        }
+        return result;
+    }
+
+    // Прочитать дерево из строки фиксированного формата "{К}(Л)[П]" (см. TreeParser.hpp).
+    // Значения вставляются в порядке КЛП, поэтому при Balancing::kNone форма дерева
+    // совпадает со строкой. В режиме kAvl дерево само перебалансируется: элементы те же,
+    // а форма может отличаться. Бросает TreeParseError (с позицией ошибки), если строка
+    // неверна или описывает не дерево поиска. O(n log n) для AVL.
+    static BinarySearchTree<T> FromString(const std::string& text, Balancing balancing = Balancing::kAvl) {
+        DynamicArray<T> values = ParseTreeString<T>(text);
+        BinarySearchTree<T> tree(balancing);
+        for (const T& value : values)
+            tree.Insert(value);
+        return tree;
     }
 
     // ---------- Изменение ----------

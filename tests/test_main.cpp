@@ -8,6 +8,7 @@ void RunAvlTests();
 void RunTraversalTests();
 void RunThreadingTests();
 void RunFunctionalTests();
+void RunStringIoTests();
 
 int main() {
     std::cout << "=== BinarySearchTree: basic operations ===\n";
@@ -24,6 +25,9 @@ int main() {
 
     std::cout << "\n=== BinarySearchTree: map, where, reduce ===\n";
     RunFunctionalTests();
+
+    std::cout << "\n=== BinarySearchTree: save to string, read from string ===\n";
+    RunStringIoTests();
 
     return test::PrintSummary();
 }
