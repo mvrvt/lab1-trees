@@ -28,8 +28,9 @@ target_include_directories(trees INTERFACE ${CMAKE_SOURCE_DIR}/include)
 
 set(WARNING_FLAGS -Wall -Wextra -Wpedantic)
 
-# ---------- Программа (пока демонстрация, потом - консольный интерфейс) ----------
+# ---------- Программа: консольный интерфейс ----------
 add_executable(lab1 src/main.cpp)
+target_include_directories(lab1 PRIVATE ${CMAKE_SOURCE_DIR}/src) # для "ui/TreeMenu.hpp"
 target_link_libraries(lab1 PRIVATE trees)
 target_compile_options(lab1 PRIVATE ${WARNING_FLAGS})
 
