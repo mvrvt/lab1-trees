@@ -2,8 +2,8 @@
 
 #include <cstddef> // std::size_t
 #include <memory>  // std::unique_ptr, std::make_unique
-#include <utility> //std::move, std::swap
-#include <ostream> // std::ostream //TODO: Разве не надо это сделать в отдельном файле
+#include <utility> // std::move, std::swap
+#include <ostream> // std::ostream
 #include <string>
 
 #include "lab2_files/DynamicArray.hpp"
@@ -20,11 +20,11 @@
 // Узел дерева.
 // Владение: родитель ВЛАДЕЕТ детьми через std::unique_ptr
 // Удалили узел -> unique_ptr сам удалил его детей.
-template <typename T> //TODO: В чем разница между template <class T> и template <typename T>?
+template <typename T>
 struct TreeNode {
     T value;
     std::unique_ptr<TreeNode<T>> left;
-    std::unique_ptr<TreeNode<T>> right; 
+    std::unique_ptr<TreeNode<T>> right;
     int height = 1; // высота поддерева с корнем в этом узле (лист - 1).
     std::size_t size = 1; // число узлов в этом поддереве (лист - 1).
     // Прошивка: следующий узел в порядке выбранного обхода (nullptr - последний).
@@ -40,7 +40,6 @@ enum class Balancing {
     kAvl, // AVL-дерево: после каждой вставки/удаления выравнивается поворотами
 };
 
-//TODO: почему мы не можем переопределить все операторы сравнения? 
 // ========== BinarySearchTree<T> - бинарное дерево поиска ==========
 // Требования к T: копирование и operator<.
 // Других сравнений не нужно: a и b считаются равными, если !(a < b) && !(b < a).
@@ -65,7 +64,7 @@ public:
 
         bool MoveNext() override {
             if (!started_) {
-                started_ = true; 
+                started_ = true;
                 PushLeftPath(root_); // самый маленький эл-нт - в конце левого пути
             } else if (current_ != nullptr) {
                 // Следующий после current_ - самый левый узел его правого поддерева,
@@ -82,9 +81,9 @@ public:
         }
 
         const T& Current() const override {
-            if (current_ == nullptr) 
+            if (current_ == nullptr)
                 throw IndexOutOfRange("TreeEnumerator: no current element");
-            return current_->value; 
+            return current_->value;
         }
 
         void Reset() override {
@@ -105,13 +104,12 @@ public:
         const Node* root_;
         const Node* current_ = nullptr;
         DynamicArray<const Node*> stack_;
-        bool started_ = false; 
+        bool started_ = false;
     };
 
     explicit BinarySearchTree(Balancing balancing = Balancing::kAvl) : balancing_(balancing) {}
 
-
-    // Deep copy
+    // Глубокая копия: копируются все узлы, а не только указатель на корень.
     // Указатели next копировать нельзя: они смотрели бы в узлы ДРУГОГО дерева.
     // Поэтому, если оригинал был прошит, копия прошивается заново в том же порядке.
     BinarySearchTree(const BinarySearchTree<T>& other)
@@ -119,9 +117,6 @@ public:
         if (other.is_threaded_)
             Thread(other.thread_order_);
     }
-    //TODO: Как мы получаем значение триноды по root_.get()? Где мы писал метод get() для триноды?
-
-    //TODO: Спросить у кого-нибудь будет ли код без не сильно нужных {} оцениваться как максимально чистый?
 
     // При перемещении узлы остаются на своих местах в памяти (переезжает только root_),
     // поэтому прошивка остаётся верной и переходит вместе с узлами.
@@ -175,7 +170,7 @@ public:
     const T& GetMin() const {
         CheckNotEmpty();
         const Node* node = root_.get();
-        while (node->left) 
+        while (node->left)
             node = node->left.get();
         return node->value;
     }
@@ -231,7 +226,7 @@ public:
 
     // Вызвать visit(значение) для каждого узла в заданном порядке.
     // visit - функция или лямбда вида void visit(const T& value). O(n).
-    template <typename Func> //TODO: В твоем коде было написано template <class Func>, имеет ли значение писать по-твоему или можно записать с typename вместо class? 
+    template <typename Func>
     void Traverse(TraversalOrder order, Func visit) const {
         const Node* root = root_.get();
         TraverseNodes(root, order, [&visit](const Node* node) { visit(node->value); });
@@ -239,10 +234,10 @@ public:
 
     // Все значения в заданном порядке (по умолчанию ЛКП - по возрастанию). O(n).
     DynamicArray<T> ToArray(TraversalOrder order = TraversalOrder::kLNR) const {
-        DynamicArray<T> result; 
+        DynamicArray<T> result;
         result.Reserve(size_);
         Traverse(order, [&result](const T& value) { result.Append(value); });
-        return result; 
+        return result;
     }
 
     // Итератор для IEnumerable (его удаляет вызывающий). Цикл for (const T& x : tree)
@@ -495,7 +490,7 @@ public:
         return removed;
     }
 
-    // Удалить все узлы. 
+    // Удалить все узлы.
     void Clear() {
         // Если просто написать root_.reset(), деструктор корня вызовет деструкторы
         // детей, те - своих детей и т.д. Это рекурсия глубиной h. У вырожденного
@@ -696,14 +691,14 @@ private:
     const Node* FindNode(const T& value) const {
         const Node* node = root_.get();
         while (node != nullptr) {
-            if (value < node->value) 
+            if (value < node->value)
                 node = node->left.get();
             else if (node->value < value)
                 node = node->right.get();
-            else 
-                return node; 
+            else
+                return node;
         }
-        return nullptr; 
+        return nullptr;
     }
 
     // Обход в любом из 6 порядков БЕЗ рекурсии, со своим стеком.
@@ -748,12 +743,12 @@ private:
     bool InsertInto(std::unique_ptr<Node>& node, const T& value) {
         if (!node) {
             node = std::make_unique<Node>(value);
-            return true; //TODO: не понял этого
+            return true; // вставка состоялась: сообщаем об этом уровням выше
         }
-        bool inserted = false; 
+        bool inserted = false;
         if (value < node->value)
             inserted = InsertInto(node->left, value);
-        else if (node->value < value) 
+        else if (node->value < value)
             inserted = InsertInto(node->right, value);
         // иначе равное значение уже есть: inserted == false
 
@@ -766,11 +761,11 @@ private:
 
     bool RemoveFrom(std::unique_ptr<Node>& node, const T& value) {
         if (!node)
-            return false; 
+            return false;
         bool removed = true;
         if (value < node->value)
             removed = RemoveFrom(node->left, value);
-        else if (node->value < value) 
+        else if (node->value < value)
             removed = RemoveFrom(node->right, value);
         else if (!node->left) {
             // Нашли удаляемый узел. Левого ребёнка нет (лист или только правый ребёнок):
@@ -800,7 +795,7 @@ private:
         if (node->left) {
             std::unique_ptr<Node> min_node = DetachMin(node->left);
             Rebalance(node); // слева стало на один узел меньше
-            return min_node; 
+            return min_node;
         }
         // У минимального узла нет левого ребёнка, а правый встаёт на его место
         std::unique_ptr<Node> min_node = std::move(node);
@@ -844,7 +839,7 @@ private:
         new_root->right = std::move(node);                      // node становится правым ребёнком L
         UpdateNode(new_root.get());
         node = std::move(new_root);                             // L встаёт на место node у родителя
-    } //TODO: Сложности с пониманием того как происходит правый поворот.
+    }
 
     /* Левый поворот вокруг node - зеркальное отражение правого:
 
@@ -869,7 +864,7 @@ private:
         UpdateNode(node.get());
         if (balancing_ == Balancing::kNone)
             return; // Обычное дерево: только поддерживаем высоты
-        
+
         int balance = BalanceFactor(node.get());
         if (balance > 1) {
             // Левое поддерево выше на 2
@@ -892,7 +887,7 @@ private:
             return nullptr;
         auto copy = std::make_unique<Node>(node->value);
         copy->height = node->height;
-        copy->size = node->size; 
+        copy->size = node->size;
         copy->left = CopySubtree(node->left.get());
         copy->right = CopySubtree(node->right.get());
         return copy;

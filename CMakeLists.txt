@@ -26,7 +26,17 @@ endif()
 add_library(trees INTERFACE)
 target_include_directories(trees INTERFACE ${CMAKE_SOURCE_DIR}/include)
 
-set(WARNING_FLAGS -Wall -Wextra -Wpedantic)
+# Строгие предупреждения (только для нашего кода, GoogleTest подключён как SYSTEM):
+#   -Wshadow           - локальная переменная прячет поле или внешнюю переменную;
+#   -Wconversion,      - неявное сужение типа (size_t -> int, double -> int)
+#   -Wsign-conversion    и смена знака (int -> size_t), частый источник ошибок с индексами;
+#   -Wold-style-cast   - приведение (int)x вместо static_cast<int>(x).
+# -DENABLE_WERROR=ON превращает предупреждения в ошибки (проверка "собирается без предупреждений").
+set(WARNING_FLAGS -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion -Wold-style-cast)
+option(ENABLE_WERROR "Treat warnings as errors" OFF)
+if(ENABLE_WERROR)
+    list(APPEND WARNING_FLAGS -Werror)
+endif()
 
 # ---------- Программа: консольный интерфейс ----------
 add_executable(lab1 src/main.cpp)

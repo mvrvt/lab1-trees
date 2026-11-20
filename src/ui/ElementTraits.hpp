@@ -340,14 +340,20 @@ struct PersonTraitsBase {
     }
 
     static P Make(int id, std::mt19937& rng) {
+        // Все фамилии кончаются на -ов / -ев: женская форма - та же фамилия + "а"
         static const char* last_names[] = {"Иванов", "Петров", "Сидоров", "Кузнецов", "Смирнов",
                                            "Попов", "Волков", "Орлов", "Лебедев", "Козлов"};
-        static const char* first_names[] = {"Иван", "Пётр", "Анна", "Мария", "Олег",
-                                            "Елена", "Дмитрий", "Ольга", "Сергей", "Алина"};
-        std::uniform_int_distribution<int> pick(0, 9);
+        static const char* male_names[] = {"Иван", "Пётр", "Олег", "Дмитрий", "Сергей"};
+        static const char* female_names[] = {"Анна", "Мария", "Елена", "Ольга", "Алина"};
+        std::uniform_int_distribution<int> pick_last(0, 9);
+        std::uniform_int_distribution<int> pick_first(0, 4);
         std::uniform_int_distribution<int> extra(0, 3);
-        return P(id, last_names[pick(rng)], first_names[pick(rng)],
-                 ElementTraits<P>::kTypicalBirthYear + extra(rng),
+        std::string last_name = last_names[pick_last(rng)];
+        bool female = std::uniform_int_distribution<int>(0, 1)(rng) == 1;
+        std::string first_name = female ? female_names[pick_first(rng)] : male_names[pick_first(rng)];
+        if (female)
+            last_name += "а";
+        return P(id, last_name, first_name, ElementTraits<P>::kTypicalBirthYear + extra(rng),
                  ElementTraits<P>::Extras()[extra(rng)]);
     }
     static P Random(std::mt19937& rng, std::size_t n) {

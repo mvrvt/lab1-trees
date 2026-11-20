@@ -21,7 +21,7 @@ enum class TraversalStep {
     kRight, // П: обойти правое поддерево
 };
 
-enum class TraversalOrder { 
+enum class TraversalOrder {
     kNLR, // КЛП
     kNRL, // КПЛ
     kLNR, // ЛКП

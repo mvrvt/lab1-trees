@@ -48,6 +48,11 @@ cmake --build build              # после каждого изменения
 ./build/lab1                     # консольный интерфейс
 ```
 
+Код собирается со строгими предупреждениями (`-Wall -Wextra -Wpedantic -Wshadow -Wconversion
+-Wsign-conversion -Wold-style-cast`) без единого предупреждения. Проверить можно так:
+`cmake -S . -B build -DENABLE_WERROR=ON`, тогда любое предупреждение станет ошибкой.
+Утечки проверены утилитой macOS `leaks` на тестах и на сессии меню: 0 утечек.
+
 Замеры собираются отдельно, в Release без санитайзеров:
 
 ```bash
