@@ -9,6 +9,7 @@ void RunTraversalTests();
 void RunThreadingTests();
 void RunFunctionalTests();
 void RunStringIoTests();
+void RunSubtreeOpsTests();
 
 int main() {
     std::cout << "=== BinarySearchTree: basic operations ===\n";
@@ -28,6 +29,9 @@ int main() {
 
     std::cout << "\n=== BinarySearchTree: save to string, read from string ===\n";
     RunStringIoTests();
+
+    std::cout << "\n=== BinarySearchTree: subtrees, merge, operators ===\n";
+    RunSubtreeOpsTests();
 
     return test::PrintSummary();
 }

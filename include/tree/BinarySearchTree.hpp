@@ -407,6 +407,71 @@ public:
         return tree;
     }
 
+    // ---------- Поддеревья ----------
+
+    // Копия поддерева с корнем в узле, равном value. Исходное дерево не меняется.
+    // Режим балансировки - как у исходного. Поддерево AVL-дерева - тоже корректное
+    // AVL-дерево (каждый его узел сбалансирован), поэтому форму можно копировать как есть.
+    // Бросает ElementNotFound, если value нет. O(h + m), m - размер поддерева.
+    BinarySearchTree<T> ExtractSubtree(const T& value) const {
+        const Node* node = FindNode(value);
+        if (node == nullptr)
+            throw ElementNotFound("BinarySearchTree::ExtractSubtree: element not found");
+        BinarySearchTree<T> result(balancing_);
+        result.root_ = CopySubtree(node);
+        result.size_ = node->size;
+        return result;
+    }
+
+    // Есть ли в дереве узел, поддерево которого полностью (по форме и значениям,
+    // вместе с листьями) совпадает с pattern. Пустой pattern содержится в любом дереве.
+    // В дереве поиска значения не повторяются, поэтому кандидат в корень вхождения
+    // ровно один: находим его спуском за O(h) и сравниваем поддеревья за O(m).
+    // Итого O(h + m), а не O(n * m), как в произвольном бинарном дереве.
+    bool ContainsSubtree(const BinarySearchTree<T>& pattern) const {
+        if (!pattern.root_)
+            return true;
+        const Node* candidate = FindNode(pattern.root_->value);
+        if (candidate == nullptr || candidate->size != pattern.size_)
+            return false; // размеры в узлах есть - разное число узлов видно сразу
+        return SameSubtrees(candidate, pattern.root_.get());
+    }
+
+    // ---------- Слияние ----------
+
+    // Добавить в дерево все элементы other (объединение множеств).
+    // Возвращает, сколько элементов действительно добавилось (повторы не считаются).
+    // Порядок вставки КЛП - по той же причине, что в Map. O(m log(n + m)) для AVL.
+    std::size_t Merge(const BinarySearchTree<T>& other) {
+        if (&other == this)
+            return 0; // a.Merge(a): всё и так уже есть
+        std::size_t added = 0;
+        other.Traverse(TraversalOrder::kNLR, [this, &added](const T& value) {
+            if (Insert(value))
+                ++added;
+        });
+        return added;
+    }
+
+    // ---------- Операторы ----------
+    // Составные присваивания - члены класса: они меняют левый операнд (*this).
+    // +, ==, !=, << - свободные функции (объявлены после класса).
+
+    BinarySearchTree<T>& operator+=(const T& value) {
+        Insert(value);
+        return *this;
+    }
+
+    BinarySearchTree<T>& operator-=(const T& value) {
+        Remove(value);
+        return *this;
+    }
+
+    BinarySearchTree<T>& operator+=(const BinarySearchTree<T>& other) {
+        Merge(other);
+        return *this;
+    }
+
     // ---------- Изменение ----------
 
     // true - вставили, false - такое значение уже было (дерево не изменилось)
@@ -506,6 +571,33 @@ private:
     void ResetThreading() noexcept {
         thread_head_ = nullptr;
         is_threaded_ = false;
+    }
+
+    // Эквивалентность через operator<: ни a < b, ни b < a
+    static bool Equivalent(const T& a, const T& b) { return !(a < b) && !(b < a); }
+
+    // Совпадают ли два поддерева по форме и значениям. Без рекурсии: свой стек пар узлов.
+    static bool SameSubtrees(const Node* first, const Node* second) {
+        struct NodePair {
+            const Node* first;
+            const Node* second;
+        };
+        DynamicArray<NodePair> stack;
+        stack.Append(NodePair{first, second});
+        while (!stack.IsEmpty()) {
+            NodePair pair = stack.GetLast(); // копия: дальше будет Append
+            stack.RemoveLast();
+            if (pair.first == nullptr || pair.second == nullptr) {
+                if (pair.first != pair.second)
+                    return false; // с одной стороны узел есть, с другой - нет
+                continue;
+            }
+            if (pair.first->size != pair.second->size || !Equivalent(pair.first->value, pair.second->value))
+                return false;
+            stack.Append(NodePair{pair.first->left.get(), pair.second->left.get()});
+            stack.Append(NodePair{pair.first->right.get(), pair.second->right.get()});
+        }
+        return true;
     }
 
     // Поиск без рекурсии: на каждом шаге уходим влево или вправо - O(h).
@@ -767,3 +859,51 @@ private:
     TraversalOrder thread_order_ = TraversalOrder::kLNR;  // в каком порядке прошито
     bool is_threaded_ = false;                            // цепочка соответствует дереву
 };
+
+// ========== Свободные операторы ==========
+
+// Объединение: новое дерево из элементов a и b (режим балансировки - как у a).
+// Выражено через +=, как принято: логика объединения написана один раз (Merge).
+template <typename T>
+BinarySearchTree<T> operator+(const BinarySearchTree<T>& a, const BinarySearchTree<T>& b) {
+    BinarySearchTree<T> result(a);
+    result += b;
+    return result;
+}
+
+// Равенство МНОЖЕСТВ элементов, форма не важна (как у std::set): AVL-дерево и
+// обычное дерево из одних и тех же значений равны. Сравнить форму можно через
+// ContainsSubtree или ToFormattedString. O(n): два итератора идут по возрастанию параллельно.
+template <typename T>
+bool operator==(const BinarySearchTree<T>& a, const BinarySearchTree<T>& b) {
+    if (a.GetCount() != b.GetCount())
+        return false;
+    // GetEnumerator создаёт итератор в куче; unique_ptr удалит его сам, даже при исключении
+    std::unique_ptr<IEnumerator<T>> first(a.GetEnumerator());
+    std::unique_ptr<IEnumerator<T>> second(b.GetEnumerator());
+    while (first->MoveNext() && second->MoveNext()) {
+        const T& x = first->Current();
+        const T& y = second->Current();
+        if (x < y || y < x)
+            return false;
+    }
+    return true;
+}
+
+template <typename T>
+bool operator!=(const BinarySearchTree<T>& a, const BinarySearchTree<T>& b) {
+    return !(a == b);
+}
+
+// Печать элементов по возрастанию: {1, 3, 4, 5}; пустое дерево - {}.
+// Не может быть членом класса: у члена левый операнд - сам объект, а здесь слева поток.
+template <typename T>
+std::ostream& operator<<(std::ostream& out, const BinarySearchTree<T>& tree) {
+    out << '{';
+    bool first = true;
+    tree.Traverse(TraversalOrder::kLNR, [&out, &first](const T& value) {
+        out << (first ? "" : ", ") << ToText(value);
+        first = false;
+    });
+    return out << '}';
+}
