@@ -2,7 +2,8 @@
 #include <sstream> // std::ostringstream
 #include <string>
 
-#include "TestFramework.hpp"
+#include <gtest/gtest.h>
+
 #include "TestHelpers.hpp"
 #include "tree/BinarySearchTree.hpp"
 
@@ -35,124 +36,126 @@ std::string Print(const T& value) {
     return out.str();
 }
 
+} // namespace
+
 // ---------- Извлечение поддерева ----------
 
-void TestExtractInnerNode() {
+TEST(SubtreeOps, ExtractInnerNode) {
     BinarySearchTree<int> tree = MakeSampleTree();
     BinarySearchTree<int> sub = tree.ExtractSubtree(3);
-    CHECK(sub.ToFormattedString() == "{3}({1}()[])[{4}()[]]");
-    CHECK(sub.GetCount() == 3);
-    CHECK(sub.GetHeight() == 2);
-    CHECK(sub.IsValid());
-    CHECK(sub.GetBalancing() == Balancing::kAvl);
+    EXPECT_EQ(sub.ToFormattedString(), "{3}({1}()[])[{4}()[]]");
+    EXPECT_EQ(sub.GetCount(), 3);
+    EXPECT_EQ(sub.GetHeight(), 2);
+    EXPECT_TRUE(sub.IsValid());
+    EXPECT_EQ(sub.GetBalancing(), Balancing::kAvl);
 }
 
-void TestExtractLeafAndRoot() {
+TEST(SubtreeOps, ExtractLeafAndRoot) {
     BinarySearchTree<int> tree = MakeSampleTree(Balancing::kNone);
     BinarySearchTree<int> leaf = tree.ExtractSubtree(9);
-    CHECK(leaf.GetCount() == 1);
-    CHECK(leaf.ToFormattedString() == "{9}()[]");
-    CHECK(leaf.GetBalancing() == Balancing::kNone);
+    EXPECT_EQ(leaf.GetCount(), 1);
+    EXPECT_EQ(leaf.ToFormattedString(), "{9}()[]");
+    EXPECT_EQ(leaf.GetBalancing(), Balancing::kNone);
 
     BinarySearchTree<int> whole = tree.ExtractSubtree(5);
-    CHECK(whole.ToFormattedString() == tree.ToFormattedString());
+    EXPECT_EQ(whole.ToFormattedString(), tree.ToFormattedString());
 }
 
-void TestExtractMissingThrows() {
+TEST(SubtreeOps, ExtractMissingThrows) {
     BinarySearchTree<int> tree = MakeSampleTree();
-    CHECK_THROWS(tree.ExtractSubtree(6), ElementNotFound);
+    EXPECT_THROW(tree.ExtractSubtree(6), ElementNotFound);
     BinarySearchTree<int> empty;
-    CHECK_THROWS(empty.ExtractSubtree(1), ElementNotFound);
+    EXPECT_THROW(empty.ExtractSubtree(1), ElementNotFound);
 }
 
 // Извлечённое поддерево - отдельная копия
-void TestExtractIsIndependent() {
+TEST(SubtreeOps, ExtractIsIndependent) {
     BinarySearchTree<int> tree = MakeSampleTree();
     BinarySearchTree<int> sub = tree.ExtractSubtree(8);
     sub.Insert(100);
     sub.Remove(7);
-    CHECK(tree.Contains(7));
-    CHECK(!tree.Contains(100));
-    CHECK(tree.GetCount() == 7);
-    CHECK(tree.IsValid());
-    CHECK(sub.IsValid());
+    EXPECT_TRUE(tree.Contains(7));
+    EXPECT_FALSE(tree.Contains(100));
+    EXPECT_EQ(tree.GetCount(), 7);
+    EXPECT_TRUE(tree.IsValid());
+    EXPECT_TRUE(sub.IsValid());
 }
 
 // Поддерево большого AVL-дерева - корректное AVL-дерево (высоты и размеры скопированы)
-void TestExtractFromLargeAvl() {
+TEST(SubtreeOps, ExtractFromLargeAvl) {
     BinarySearchTree<int> tree;
     DynamicArray<int> values = MakeShuffled(2000, 5);
     for (int value : values)
         tree.Insert(value);
     for (int value = 0; value < 2000; value += 97) {
         BinarySearchTree<int> sub = tree.ExtractSubtree(value);
-        CHECK(sub.IsValid());
-        CHECK(tree.ContainsSubtree(sub));
+        EXPECT_TRUE(sub.IsValid());
+        EXPECT_TRUE(tree.ContainsSubtree(sub));
     }
 }
 
 // ---------- Поиск поддерева ----------
 
-void TestContainsSubtreeYes() {
+TEST(SubtreeOps, ContainsSubtreeYes) {
     BinarySearchTree<int> tree = MakeSampleTree();
-    CHECK(tree.ContainsSubtree(Pattern("{3}({1}()[])[{4}()[]]")));
-    CHECK(tree.ContainsSubtree(Pattern("{7}()[]")));                // лист
-    CHECK(tree.ContainsSubtree(Pattern(tree.ToFormattedString()))); // всё дерево
+    EXPECT_TRUE(tree.ContainsSubtree(Pattern("{3}({1}()[])[{4}()[]]")));
+    EXPECT_TRUE(tree.ContainsSubtree(Pattern("{7}()[]")));                // лист
+    EXPECT_TRUE(tree.ContainsSubtree(Pattern(tree.ToFormattedString()))); // всё дерево
 }
 
-void TestContainsSubtreeNo() {
+TEST(SubtreeOps, ContainsSubtreeNo) {
     BinarySearchTree<int> tree = MakeSampleTree();
-    CHECK(!tree.ContainsSubtree(Pattern("{3}({1}()[])[]")));       // тот же корень, нет листа 4
-    CHECK(!tree.ContainsSubtree(Pattern("{4}({3}()[])[]")));       // те же значения, другая форма
-    CHECK(!tree.ContainsSubtree(Pattern("{6}()[]")));              // значения нет
-    CHECK(!tree.ContainsSubtree(Pattern("{8}({7}()[])[{10}()[]]"))); // другой лист
+    EXPECT_FALSE(tree.ContainsSubtree(Pattern("{3}({1}()[])[]")));       // тот же корень, нет листа 4
+    EXPECT_FALSE(tree.ContainsSubtree(Pattern("{4}({3}()[])[]")));       // те же значения, другая форма
+    EXPECT_FALSE(tree.ContainsSubtree(Pattern("{6}()[]")));              // значения нет
+    EXPECT_FALSE(tree.ContainsSubtree(Pattern("{8}({7}()[])[{10}()[]]"))); // другой лист
 }
 
-void TestContainsEmptyPattern() {
+TEST(SubtreeOps, ContainsEmptyPattern) {
     BinarySearchTree<int> tree = MakeSampleTree();
     BinarySearchTree<int> empty;
-    CHECK(tree.ContainsSubtree(empty));
-    CHECK(empty.ContainsSubtree(empty));
-    CHECK(!empty.ContainsSubtree(Pattern("{1}()[]")));
+    EXPECT_TRUE(tree.ContainsSubtree(empty));
+    EXPECT_TRUE(empty.ContainsSubtree(empty));
+    EXPECT_FALSE(empty.ContainsSubtree(Pattern("{1}()[]")));
 }
 
 // Образец больше дерева
-void TestPatternBiggerThanTree() {
+TEST(SubtreeOps, PatternBiggerThanTree) {
     BinarySearchTree<int> small;
     small.Insert(5);
-    CHECK(!small.ContainsSubtree(MakeSampleTree()));
+    EXPECT_FALSE(small.ContainsSubtree(MakeSampleTree()));
 }
 
 // ---------- Слияние и операторы ----------
 
-void TestMerge() {
+TEST(SubtreeOps, Merge) {
     BinarySearchTree<int> a = MakeSampleTree();
     BinarySearchTree<int> b;
     const int values[] = {4, 5, 6, 10};
     for (int value : values)
         b.Insert(value);
-    CHECK(a.Merge(b) == 2); // добавились только 6 и 10
-    CHECK(a.GetCount() == 9);
-    CHECK(a.IsValid());
-    CHECK(a.Merge(a) == 0); // слияние с самим собой ничего не меняет
-    CHECK(a.GetCount() == 9);
+    EXPECT_EQ(a.Merge(b), 2); // добавились только 6 и 10
+    EXPECT_EQ(a.GetCount(), 9);
+    EXPECT_TRUE(a.IsValid());
+    EXPECT_EQ(a.Merge(a), 0); // слияние с самим собой ничего не меняет
+    EXPECT_EQ(a.GetCount(), 9);
 }
 
-void TestPlusEqualsAndMinusEquals() {
+TEST(SubtreeOps, PlusEqualsAndMinusEquals) {
     BinarySearchTree<int> tree;
     tree += 5;
     tree += 3;
     tree += 5; // повтор - ничего не меняет
     (tree += 8) += 1; // += возвращает ссылку на дерево - можно цепочкой
-    CHECK(tree.GetCount() == 4);
+    EXPECT_EQ(tree.GetCount(), 4);
     tree -= 3;
     tree -= 100; // нет такого - ничего не меняет
-    CHECK(tree.GetCount() == 3);
-    CHECK(!tree.Contains(3));
-    CHECK(tree.IsValid());
+    EXPECT_EQ(tree.GetCount(), 3);
+    EXPECT_FALSE(tree.Contains(3));
+    EXPECT_TRUE(tree.IsValid());
 }
 
-void TestPlusIsUnion() {
+TEST(SubtreeOps, PlusIsUnion) {
     BinarySearchTree<int> a;
     BinarySearchTree<int> b(Balancing::kNone);
     a += 1;
@@ -160,18 +163,18 @@ void TestPlusIsUnion() {
     b += 2;
     b += 3;
     BinarySearchTree<int> sum = a + b;
-    CHECK(Print(sum) == "{1, 2, 3}");
-    CHECK(sum.GetBalancing() == Balancing::kAvl); // как у левого операнда
-    CHECK(a.GetCount() == 2);                     // операнды не меняются
-    CHECK(b.GetCount() == 2);
+    EXPECT_EQ(Print(sum), "{1, 2, 3}");
+    EXPECT_EQ(sum.GetBalancing(), Balancing::kAvl); // как у левого операнда
+    EXPECT_EQ(a.GetCount(), 2);                     // операнды не меняются
+    EXPECT_EQ(b.GetCount(), 2);
 
     BinarySearchTree<int> c = a;
     c += b; // объединение "на месте"
-    CHECK(c == sum);
+    EXPECT_EQ(c, sum);
 }
 
 // == сравнивает множества элементов, а не форму
-void TestEqualityIgnoresShape() {
+TEST(SubtreeOps, EqualityIgnoresShape) {
     BinarySearchTree<int> avl(Balancing::kAvl);
     BinarySearchTree<int> plain(Balancing::kNone);
     DynamicArray<int> values = MakeSorted(50);
@@ -179,50 +182,31 @@ void TestEqualityIgnoresShape() {
         avl += value;
         plain += value;
     }
-    CHECK(avl.GetHeight() != plain.GetHeight()); // формы разные
-    CHECK(avl == plain);
-    CHECK(!(avl != plain));
+    EXPECT_NE(avl.GetHeight(), plain.GetHeight()); // формы разные
+    EXPECT_EQ(avl, plain);
+    EXPECT_FALSE(avl != plain);
 
     plain -= 25;
-    CHECK(avl != plain); // разное число элементов
+    EXPECT_NE(avl, plain); // разное число элементов
     plain += 100;
-    CHECK(avl != plain); // число то же, элементы разные
+    EXPECT_NE(avl, plain); // число то же, элементы разные
 
     BinarySearchTree<int> empty1;
     BinarySearchTree<int> empty2(Balancing::kNone);
-    CHECK(empty1 == empty2);
+    EXPECT_EQ(empty1, empty2);
 }
 
-void TestPrintOperator() {
-    CHECK(Print(MakeSampleTree()) == "{1, 3, 4, 5, 7, 8, 9}");
-    CHECK(Print(BinarySearchTree<int>()) == "{}");
+TEST(SubtreeOps, PrintOperator) {
+    EXPECT_EQ(Print(MakeSampleTree()), "{1, 3, 4, 5, 7, 8, 9}");
+    EXPECT_EQ(Print(BinarySearchTree<int>()), "{}");
 
     BinarySearchTree<double> doubles;
     doubles += 0.5;
     doubles += -1.25;
-    CHECK(Print(doubles) == "{-1.25, 0.5}");
+    EXPECT_EQ(Print(doubles), "{-1.25, 0.5}");
 
     BinarySearchTree<std::string> words;
     words += "b";
     words += "a";
-    CHECK(Print(words) == "{a, b}");
-}
-
-} // namespace
-
-void RunSubtreeOpsTests() {
-    test::RunTest("extract inner node", TestExtractInnerNode);
-    test::RunTest("extract leaf and root", TestExtractLeafAndRoot);
-    test::RunTest("extract missing throws", TestExtractMissingThrows);
-    test::RunTest("extract is independent", TestExtractIsIndependent);
-    test::RunTest("extract from large avl", TestExtractFromLargeAvl);
-    test::RunTest("contains subtree yes", TestContainsSubtreeYes);
-    test::RunTest("contains subtree no", TestContainsSubtreeNo);
-    test::RunTest("contains empty pattern", TestContainsEmptyPattern);
-    test::RunTest("pattern bigger than tree", TestPatternBiggerThanTree);
-    test::RunTest("merge", TestMerge);
-    test::RunTest("operators += and -=", TestPlusEqualsAndMinusEquals);
-    test::RunTest("operator + is union", TestPlusIsUnion);
-    test::RunTest("equality ignores shape", TestEqualityIgnoresShape);
-    test::RunTest("print operator", TestPrintOperator);
+    EXPECT_EQ(Print(words), "{a, b}");
 }

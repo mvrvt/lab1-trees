@@ -2,7 +2,8 @@
 #include <stdexcept>
 #include <string>
 
-#include "TestFramework.hpp"
+#include <gtest/gtest.h>
+
 #include "TestHelpers.hpp"
 #include "tree/BinarySearchTree.hpp"
 
@@ -55,174 +56,175 @@ long ParseErrorPosition(const std::string& text) {
     return -1;
 }
 
+} // namespace
+
 // ---------- Сохранение по формату ----------
 
-void TestSaveDefaultFormat() {
-    CHECK(MakeSmallTree().ToFormattedString() == "{5}({3}()[])[{8}()[]]");
-    CHECK(MakeSampleTree().ToFormattedString("{К}(Л)[П]") ==
-          "{5}({3}({1}()[])[{4}()[]])[{8}({7}()[])[{9}()[]]]");
+TEST(StringIo, SaveDefaultFormat) {
+    EXPECT_EQ(MakeSmallTree().ToFormattedString(), "{5}({3}()[])[{8}()[]]");
+    EXPECT_EQ(MakeSampleTree().ToFormattedString("{К}(Л)[П]"), "{5}({3}({1}()[])[{4}()[]])[{8}({7}()[])[{9}()[]]]");
 }
 
-void TestSaveOtherFormats() {
+TEST(StringIo, SaveOtherFormats) {
     BinarySearchTree<int> tree = MakeSmallTree();
-    CHECK(tree.ToFormattedString("(Л){К}[П]") == "((){3}[]){5}[(){8}[]]"); // ЛКП
-    CHECK(tree.ToFormattedString("[П](Л){К}") == "[[](){8}]([](){3}){5}"); // ПЛК
-    CHECK(tree.ToFormattedString("<L>|N|(R)") == "<<>|3|()>|5|(<>|8|())"); // латиница, |..|
-    CHECK(tree.ToFormattedString("{К}(Л)[R]") == "{5}({3}()[])[{8}()[]]"); // смешанные буквы
+    EXPECT_EQ(tree.ToFormattedString("(Л){К}[П]"), "((){3}[]){5}[(){8}[]]"); // ЛКП
+    EXPECT_EQ(tree.ToFormattedString("[П](Л){К}"), "[[](){8}]([](){3}){5}"); // ПЛК
+    EXPECT_EQ(tree.ToFormattedString("<L>|N|(R)"), "<<>|3|()>|5|(<>|8|())"); // латиница, |..|
+    EXPECT_EQ(tree.ToFormattedString("{К}(Л)[R]"), "{5}({3}()[])[{8}()[]]"); // смешанные буквы
 }
 
-void TestSaveEmptyAndSingle() {
+TEST(StringIo, SaveEmptyAndSingle) {
     BinarySearchTree<int> empty;
-    CHECK(empty.ToFormattedString() == "");
+    EXPECT_EQ(empty.ToFormattedString(), "");
     BinarySearchTree<int> single;
     single.Insert(42);
-    CHECK(single.ToFormattedString() == "{42}()[]");
-    CHECK(single.ToFormattedString("(Л)[П]{К}") == "()[]{42}");
+    EXPECT_EQ(single.ToFormattedString(), "{42}()[]");
+    EXPECT_EQ(single.ToFormattedString("(Л)[П]{К}"), "()[]{42}");
 }
 
-void TestFormatErrors() {
+TEST(StringIo, FormatErrors) {
     BinarySearchTree<int> tree = MakeSmallTree();
-    CHECK_THROWS(tree.ToFormattedString(""), TreeFormatError);            // пусто
-    CHECK_THROWS(tree.ToFormattedString("{К}(Л)"), TreeFormatError);      // нет П
-    CHECK_THROWS(tree.ToFormattedString("{К}(К)[П]"), TreeFormatError);   // К дважды
-    CHECK_THROWS(tree.ToFormattedString("{К(Л)[П]"), TreeFormatError);    // нет '}'
-    CHECK_THROWS(tree.ToFormattedString("{К}(Л)[П]x"), TreeFormatError);  // лишнее в конце
-    CHECK_THROWS(tree.ToFormattedString("{X}(Л)[П]"), TreeFormatError);   // не буква формата
-    CHECK_THROWS(tree.ToFormattedString("aКa(Л)[П]"), TreeFormatError);   // буква вместо скобки
-    CHECK_THROWS(tree.ToFormattedString("\\К\\(Л)[П]"), TreeFormatError); // '\' нельзя
-    CHECK_THROWS(tree.ToFormattedString("{ К}(Л)[П]"), TreeFormatError);  // пробел
+    EXPECT_THROW(tree.ToFormattedString(""), TreeFormatError);            // пусто
+    EXPECT_THROW(tree.ToFormattedString("{К}(Л)"), TreeFormatError);      // нет П
+    EXPECT_THROW(tree.ToFormattedString("{К}(К)[П]"), TreeFormatError);   // К дважды
+    EXPECT_THROW(tree.ToFormattedString("{К(Л)[П]"), TreeFormatError);    // нет '}'
+    EXPECT_THROW(tree.ToFormattedString("{К}(Л)[П]x"), TreeFormatError);  // лишнее в конце
+    EXPECT_THROW(tree.ToFormattedString("{X}(Л)[П]"), TreeFormatError);   // не буква формата
+    EXPECT_THROW(tree.ToFormattedString("aКa(Л)[П]"), TreeFormatError);   // буква вместо скобки
+    EXPECT_THROW(tree.ToFormattedString("\\К\\(Л)[П]"), TreeFormatError); // '\' нельзя
+    EXPECT_THROW(tree.ToFormattedString("{ К}(Л)[П]"), TreeFormatError);  // пробел
     // TreeFormatError - это std::invalid_argument
-    CHECK_THROWS(tree.ToFormattedString("{К}"), std::invalid_argument);
+    EXPECT_THROW(tree.ToFormattedString("{К}"), std::invalid_argument);
 }
 
-void TestFormatToOrder() {
-    CHECK(FormatToOrder(ParseTreeFormat("{К}(Л)[П]")) == TraversalOrder::kNLR);
-    CHECK(FormatToOrder(ParseTreeFormat("(Л){К}[П]")) == TraversalOrder::kLNR);
-    CHECK(FormatToOrder(ParseTreeFormat("[R](L){N}")) == TraversalOrder::kRLN);
+TEST(StringIo, FormatToOrder) {
+    EXPECT_EQ(FormatToOrder(ParseTreeFormat("{К}(Л)[П]")), TraversalOrder::kNLR);
+    EXPECT_EQ(FormatToOrder(ParseTreeFormat("(Л){К}[П]")), TraversalOrder::kLNR);
+    EXPECT_EQ(FormatToOrder(ParseTreeFormat("[R](L){N}")), TraversalOrder::kRLN);
 }
 
 // ---------- Чтение ----------
 
-void TestReadSimple() {
+TEST(StringIo, ReadSimple) {
     BinarySearchTree<int> tree = BinarySearchTree<int>::FromString("{5}({3}()[])[{8}()[]]");
-    CHECK(tree.GetCount() == 3);
-    CHECK(tree.Contains(3) && tree.Contains(5) && tree.Contains(8));
-    CHECK(tree.IsValid());
+    EXPECT_EQ(tree.GetCount(), 3);
+    EXPECT_TRUE(tree.Contains(3) && tree.Contains(5) && tree.Contains(8));
+    EXPECT_TRUE(tree.IsValid());
 
     BinarySearchTree<int> empty = BinarySearchTree<int>::FromString("");
-    CHECK(empty.IsEmpty());
+    EXPECT_TRUE(empty.IsEmpty());
 }
 
 // Без балансировки форма совпадает со строкой: сохранить -> прочитать -> сохранить
-void TestRoundTripPlainInt() {
+TEST(StringIo, RoundTripPlainInt) {
     BinarySearchTree<int> tree(Balancing::kNone);
     DynamicArray<int> values = MakeShuffled(500, 2024);
     for (int value : values)
         tree.Insert(value - 250); // есть и отрицательные
     std::string text = tree.ToFormattedString();
     BinarySearchTree<int> read = BinarySearchTree<int>::FromString(text, Balancing::kNone);
-    CHECK(read.ToFormattedString() == text);
-    CHECK(read.GetHeight() == tree.GetHeight());
-    CHECK(read.IsValid());
+    EXPECT_EQ(read.ToFormattedString(), text);
+    EXPECT_EQ(read.GetHeight(), tree.GetHeight());
+    EXPECT_TRUE(read.IsValid());
 }
 
 // В режиме AVL элементы те же, дерево корректное AVL (форма может отличаться)
-void TestReadIntoAvl() {
+TEST(StringIo, ReadIntoAvl) {
     BinarySearchTree<int> plain(Balancing::kNone);
     DynamicArray<int> values = MakeSorted(100); // "палка"
     for (int value : values)
         plain.Insert(value);
     BinarySearchTree<int> avl = BinarySearchTree<int>::FromString(plain.ToFormattedString());
-    CHECK(avl.GetBalancing() == Balancing::kAvl);
-    CHECK(avl.IsValid());
-    CHECK(SameElements(avl, plain));
-    CHECK(avl.GetHeight() < plain.GetHeight());
+    EXPECT_EQ(avl.GetBalancing(), Balancing::kAvl);
+    EXPECT_TRUE(avl.IsValid());
+    EXPECT_TRUE(SameElements(avl, plain));
+    EXPECT_TRUE(avl.GetHeight() < plain.GetHeight());
 }
 
-void TestRoundTripDouble() {
+TEST(StringIo, RoundTripDouble) {
     BinarySearchTree<double> tree(Balancing::kNone);
     DynamicArray<int> values = MakeShuffled(300, 7);
     for (int value : values)
         tree.Insert(value * 0.1 - 3.7 + 1.0 / 3.0); // числа без короткой точной записи
     std::string text = tree.ToFormattedString();
     BinarySearchTree<double> read = BinarySearchTree<double>::FromString(text, Balancing::kNone);
-    CHECK(read.ToFormattedString() == text);
-    CHECK(SameElements(read, tree)); // значения совпадают ТОЧНО, до последнего бита
+    EXPECT_EQ(read.ToFormattedString(), text);
+    EXPECT_TRUE(SameElements(read, tree)); // значения совпадают ТОЧНО, до последнего бита
 
     BinarySearchTree<double> simple;
     simple.Insert(0.1);
     simple.Insert(-2.5);
-    CHECK(simple.ToFormattedString() == "{0.1}({-2.5}()[])[]"); // без лишних цифр
+    EXPECT_EQ(simple.ToFormattedString(), "{0.1}({-2.5}()[])[]"); // без лишних цифр
 }
 
-void TestRoundTripString() {
+TEST(StringIo, RoundTripString) {
     BinarySearchTree<std::string> tree(Balancing::kNone);
     const char* words[] = {"pear", "apple", "zebra", "two words", "кириллица", "", "(a)[b]{c"};
     for (const char* word : words)
         tree.Insert(word);
     std::string text = tree.ToFormattedString();
     BinarySearchTree<std::string> read = BinarySearchTree<std::string>::FromString(text, Balancing::kNone);
-    CHECK(read.ToFormattedString() == text);
-    CHECK(read.GetCount() == 7);
-    CHECK(read.Contains("")); // пустая строка - тоже значение: "{}"
+    EXPECT_EQ(read.ToFormattedString(), text);
+    EXPECT_EQ(read.GetCount(), 7);
+    EXPECT_TRUE(read.Contains("")); // пустая строка - тоже значение: "{}"
 }
 
 // '}' и '\' внутри значений экранируются
-void TestEscaping() {
+TEST(StringIo, Escaping) {
     BinarySearchTree<std::string> tree;
     tree.Insert("a}b");
     tree.Insert("c\\d");
     std::string text = tree.ToFormattedString();
-    CHECK(text == "{a\\}b}()[{c\\\\d}()[]]");
+    EXPECT_EQ(text, "{a\\}b}()[{c\\\\d}()[]]");
     BinarySearchTree<std::string> read = BinarySearchTree<std::string>::FromString(text);
-    CHECK(read.Contains("a}b"));
-    CHECK(read.Contains("c\\d"));
+    EXPECT_TRUE(read.Contains("a}b"));
+    EXPECT_TRUE(read.Contains("c\\d"));
 }
 
-void TestParseErrors() {
+TEST(StringIo, ParseErrors) {
     using Tree = BinarySearchTree<int>;
-    CHECK_THROWS(Tree::FromString("{5}({3}()[]"), TreeParseError);            // не закрыто
-    CHECK_THROWS(Tree::FromString("{5}()[]x"), TreeParseError);               // мусор в конце
-    CHECK_THROWS(Tree::FromString("{5}()[]{6}()[]"), TreeParseError);         // два корня
-    CHECK_THROWS(Tree::FromString("{abc}()[]"), TreeParseError);              // не число
-    CHECK_THROWS(Tree::FromString("{12abc}()[]"), TreeParseError);            // не целиком число
-    CHECK_THROWS(Tree::FromString("{99999999999}()[]"), TreeParseError);      // не влезает в int
-    CHECK_THROWS(Tree::FromString("5()[]"), TreeParseError);                  // нет скобок у значения
-    CHECK_THROWS(Tree::FromString("{5}[]()"), TreeParseError);                // перепутаны поддеревья
-    CHECK_THROWS(Tree::FromString("{5}({3}()[]{4}()[])[]"), TreeParseError);  // два узла в одном месте
-    CHECK_THROWS(Tree::FromString(" {5}()[]"), TreeParseError);               // пробел в начале
-    CHECK_THROWS(Tree::FromString("{5"), TreeParseError);                     // оборвано
-    CHECK_THROWS(Tree::FromString("{5\\"), TreeParseError);                   // оборвано экранирование
+    EXPECT_THROW(Tree::FromString("{5}({3}()[]"), TreeParseError);            // не закрыто
+    EXPECT_THROW(Tree::FromString("{5}()[]x"), TreeParseError);               // мусор в конце
+    EXPECT_THROW(Tree::FromString("{5}()[]{6}()[]"), TreeParseError);         // два корня
+    EXPECT_THROW(Tree::FromString("{abc}()[]"), TreeParseError);              // не число
+    EXPECT_THROW(Tree::FromString("{12abc}()[]"), TreeParseError);            // не целиком число
+    EXPECT_THROW(Tree::FromString("{99999999999}()[]"), TreeParseError);      // не влезает в int
+    EXPECT_THROW(Tree::FromString("5()[]"), TreeParseError);                  // нет скобок у значения
+    EXPECT_THROW(Tree::FromString("{5}[]()"), TreeParseError);                // перепутаны поддеревья
+    EXPECT_THROW(Tree::FromString("{5}({3}()[]{4}()[])[]"), TreeParseError);  // два узла в одном месте
+    EXPECT_THROW(Tree::FromString(" {5}()[]"), TreeParseError);               // пробел в начале
+    EXPECT_THROW(Tree::FromString("{5"), TreeParseError);                     // оборвано
+    EXPECT_THROW(Tree::FromString("{5\\"), TreeParseError);                   // оборвано экранирование
     // TreeParseError - это std::invalid_argument
-    CHECK_THROWS(Tree::FromString("{"), std::invalid_argument);
+    EXPECT_THROW(Tree::FromString("{"), std::invalid_argument);
 }
 
 // Строка правильная по скобкам, но описывает не дерево поиска
-void TestNotSearchTree() {
+TEST(StringIo, NotSearchTree) {
     using Tree = BinarySearchTree<int>;
-    CHECK_THROWS(Tree::FromString("{5}({8}()[])[]"), TreeParseError);         // 8 слева от 5
-    CHECK_THROWS(Tree::FromString("{5}()[{2}()[]]"), TreeParseError);         // 2 справа от 5
-    CHECK_THROWS(Tree::FromString("{5}({5}()[])[]"), TreeParseError);         // повтор
-    CHECK_THROWS(Tree::FromString("{5}({3}()[{7}()[]])[]"), TreeParseError);  // внук 7 > деда 5
+    EXPECT_THROW(Tree::FromString("{5}({8}()[])[]"), TreeParseError);         // 8 слева от 5
+    EXPECT_THROW(Tree::FromString("{5}()[{2}()[]]"), TreeParseError);         // 2 справа от 5
+    EXPECT_THROW(Tree::FromString("{5}({5}()[])[]"), TreeParseError);         // повтор
+    EXPECT_THROW(Tree::FromString("{5}({3}()[{7}()[]])[]"), TreeParseError);  // внук 7 > деда 5
 }
 
 // Позиция ошибки - номер байта, где начинается неверное место
-void TestParseErrorPosition() {
-    CHECK(ParseErrorPosition("{5}({8}()[])[]") == 5);   // значение 8
-    CHECK(ParseErrorPosition("{5}()[]x") == 7);          // лишний символ
-    CHECK(ParseErrorPosition("{5}({3}()[]") == 11);     // строка кончилась
-    CHECK(ParseErrorPosition("{5}({3}()[])[]") == -1);  // ошибки нет
+TEST(StringIo, ParseErrorPosition) {
+    EXPECT_EQ(ParseErrorPosition("{5}({8}()[])[]"), 5);   // значение 8
+    EXPECT_EQ(ParseErrorPosition("{5}()[]x"), 7);          // лишний символ
+    EXPECT_EQ(ParseErrorPosition("{5}({3}()[]"), 11);     // строка кончилась
+    EXPECT_EQ(ParseErrorPosition("{5}({3}()[])[]"), -1);  // ошибки нет
 
     try {
         BinarySearchTree<int>::FromString("{5}({8}()[])[]");
-        CHECK(false);
+        ADD_FAILURE() << "FromString must throw TreeParseError";
     } catch (const TreeParseError& error) {
-        CHECK(std::string(error.what()).find("position 5") != std::string::npos);
+        EXPECT_NE(std::string(error.what()).find("position 5"), std::string::npos);
     }
 }
 
 // Строка от "палки" - глубокая вложенность; разбор без рекурсии
-void TestDeepString() {
+TEST(StringIo, DeepString) {
     const int n = 5000;
     BinarySearchTree<int> stick(Balancing::kNone);
     DynamicArray<int> values = MakeSorted(n);
@@ -230,26 +232,6 @@ void TestDeepString() {
         stick.Insert(value);
     std::string text = stick.ToFormattedString();
     BinarySearchTree<int> read = BinarySearchTree<int>::FromString(text, Balancing::kNone);
-    CHECK(read.GetHeight() == static_cast<std::size_t>(n));
-    CHECK(read.ToFormattedString() == text);
-}
-
-} // namespace
-
-void RunStringIoTests() {
-    test::RunTest("save default format", TestSaveDefaultFormat);
-    test::RunTest("save other formats", TestSaveOtherFormats);
-    test::RunTest("save empty and single", TestSaveEmptyAndSingle);
-    test::RunTest("format errors", TestFormatErrors);
-    test::RunTest("format to order", TestFormatToOrder);
-    test::RunTest("read simple", TestReadSimple);
-    test::RunTest("round trip plain int", TestRoundTripPlainInt);
-    test::RunTest("read into avl", TestReadIntoAvl);
-    test::RunTest("round trip double", TestRoundTripDouble);
-    test::RunTest("round trip string", TestRoundTripString);
-    test::RunTest("escaping", TestEscaping);
-    test::RunTest("parse errors", TestParseErrors);
-    test::RunTest("not a search tree", TestNotSearchTree);
-    test::RunTest("parse error position", TestParseErrorPosition);
-    test::RunTest("deep string", TestDeepString);
+    EXPECT_EQ(read.GetHeight(), static_cast<std::size_t>(n));
+    EXPECT_EQ(read.ToFormattedString(), text);
 }
