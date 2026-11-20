@@ -5,3 +5,7 @@ build-*/
 # Настройки редактора и системные файлы
 .vscode/
 .DS_Store
+
+# Виртуальное окружение Python (matplotlib для графиков)
+.venv/
+__pycache__/

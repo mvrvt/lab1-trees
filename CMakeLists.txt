@@ -70,3 +70,12 @@ target_compile_options(tests PRIVATE ${WARNING_FLAGS})
 enable_testing()
 include(GoogleTest)
 gtest_discover_tests(tests DISCOVERY_MODE PRE_TEST)
+
+# ---------- Замеры скорости ----------
+# Цифры имеют смысл только в Release без санитайзеров:
+#   cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DENABLE_SANITIZERS=OFF
+#   cmake --build build-release --target benchmarks && ./build-release/benchmarks
+# Тесты при этом не нужны - их можно не собирать (--target benchmarks).
+add_executable(benchmarks bench/benchmarks.cpp)
+target_link_libraries(benchmarks PRIVATE trees)
+target_compile_options(benchmarks PRIVATE ${WARNING_FLAGS})

@@ -1,0 +1,5 @@
+test,variant,n,seconds,height
+build,avl_sorted,100000000,8.79249,27
+build,avl_random,100000000,136.114,32
+search,avl,100000000,178.169,32
+traverse,traverse,100000000,5.24962,0
