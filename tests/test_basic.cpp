@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <limits>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -154,8 +155,9 @@ TEST(Basic, ManyInsertsAndRemoves) {
 
     // Удаляем чётные (в перемешанном порядке) и проверяем, что осталось ровно нужное
     for (int value : values) {
-        if (value % 2 == 0)
+        if (value % 2 == 0) {
             EXPECT_TRUE(tree.Remove(value));
+        }
     }
     EXPECT_EQ(tree.GetCount(), static_cast<std::size_t>(n / 2));
     EXPECT_TRUE(tree.IsValid());
@@ -253,4 +255,20 @@ TEST(Basic, NoLeaks) {
         EXPECT_EQ(LiveCounter::alive, 400);
     } // здесь вызывается деструктор tree
     EXPECT_EQ(LiveCounter::alive, 0);
+}
+
+TEST(Basic, RejectNonFiniteNumbers) {
+    BinarySearchTree<double> tree;
+    tree.Insert(1e308);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double infinity = std::numeric_limits<double>::infinity();
+
+    EXPECT_THROW(tree.Insert(infinity), std::invalid_argument);
+    EXPECT_THROW(tree.Find(nan), std::invalid_argument);
+    EXPECT_THROW(tree.Contains(nan), std::invalid_argument);
+    EXPECT_THROW(tree.Remove(nan), std::invalid_argument);
+    EXPECT_THROW(tree.IndexOf(nan), std::invalid_argument);
+    EXPECT_THROW(tree.Map([](double value) { return value * 2.0; }), std::invalid_argument);
+    EXPECT_EQ(tree.GetCount(), 1U);
+    EXPECT_EQ(tree.Get(0), 1e308);
 }

@@ -17,7 +17,7 @@
 // Кириллическая буква в UTF-8 занимает 2 байта ("К" = 0xD0 0x9A), поэтому буквы
 // сравниваются как подстроки, а не как отдельные char.
 
-// Формат, который умеет читать FromString (и формат сохранения по умолчанию)
+// Формат чтения и сохранения по умолчанию
 inline const std::string kDefaultTreeFormat = "{К}(Л)[П]";
 
 // Одна группа формата
@@ -31,6 +31,12 @@ struct FormatPart {
 struct TreeFormat {
     FormatPart parts[3];
 };
+
+// Когда конец группы совпадает с началом узла, перед непустым
+// поддеревом пишется '\'. Пустое поддерево сразу закрывает группу.
+inline bool NeedsChildMarker(const TreeFormat& format, const FormatPart& part) {
+    return part.close == format.parts[0].open;
+}
 
 namespace tree_format_detail {
 

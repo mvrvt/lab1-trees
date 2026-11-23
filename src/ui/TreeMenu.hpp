@@ -74,7 +74,7 @@ private:
         static const Item items[kItemCount] = {
             {"Заполнение", "Вставить элемент", &TreeMenu::InsertOne},
             {nullptr, "Вставить N элементов (случайные / по возрастанию / по убыванию)", &TreeMenu::FillAuto},
-            {nullptr, "Прочитать дерево из строки {К}(Л)[П] (заменит текущее)", &TreeMenu::ReadFromString},
+            {nullptr, "Прочитать дерево из строки по формату (заменит текущее)", &TreeMenu::ReadFromString},
             {nullptr, "Удалить элемент", &TreeMenu::RemoveOne},
             {nullptr, "Очистить дерево", &TreeMenu::ClearTree},
             {"Поиск", "Найти элемент", &TreeMenu::FindOne},
@@ -168,18 +168,6 @@ private:
         printer.Finish();
     }
 
-    // Длинную строку обрезаем, не разрывая символ UTF-8 посередине
-    static void PrintLongText(const std::string& text) {
-        if (text.size() <= kTextPrintLimit) {
-            std::cout << text << "\n";
-            return;
-        }
-        std::size_t cut = kTextPrintLimit;
-        while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0) == 0x80)
-            --cut; // байт-продолжение UTF-8 (10xxxxxx) - отступаем к началу символа
-        std::cout << text.substr(0, cut) << "...\n(показано " << cut << " байт из " << text.size() << ")\n";
-    }
-
     // Результат Map / Where / ExtractSubtree: показать и предложить сделать текущим
     void OfferResult(Tree& result) {
         std::cout << "Результат (элементов: " << result.GetCount() << "):\n";
@@ -217,15 +205,29 @@ private:
         }
     }
 
-    // Второе дерево из строки. Пустая строка - пустое дерево; при ошибке вопрос повторяется.
+    static std::string AskTreeFormat() {
+        for (;;) {
+            std::string format = AskLine("Формат из групп К, Л, П (Enter = " + kDefaultTreeFormat + "): ");
+            if (format.empty())
+                return kDefaultTreeFormat;
+            try {
+                ParseTreeFormat(format);
+                return format;
+            } catch (const TreeFormatError& error) {
+                std::cout << "  Ошибка формата: " << error.what() << "\n";
+            }
+        }
+    }
+
     static Tree AskTree(const std::string& what, Balancing balancing) {
-        std::cout << "Формат: {значение}(левое поддерево)[правое поддерево], пустое поддерево - ничего.\n"
-                  << "Пример: " << Traits::ExampleTree() << "\n";
+        const std::string format = AskTreeFormat();
+        if (format == kDefaultTreeFormat)
+            std::cout << "Пример: " << Traits::ExampleTree() << "\n";
         while (true) {
             std::string line = AskLine(what + ": ");
             try {
-                return Tree::FromString(line, balancing);
-            } catch (const std::invalid_argument& error) {
+                return Tree::FromString(line, format, balancing);
+            } catch (const TreeParseError& error) {
                 std::cout << "  Ошибка в строке: " << error.what() << "\n";
             }
         }
@@ -423,6 +425,8 @@ private:
         } else {
             T low = AskKey("a");
             T high = AskKey("b");
+            if (high < low)
+                throw std::invalid_argument("нижняя граница больше верхней");
             // a <= x <= b, записанное только через <:  !(x < a) && !(b < x)
             result = tree_.Where([&low, &high](const T& x) { return !(x < low) && !(high < x); });
         }
@@ -438,11 +442,11 @@ private:
     // ---------- Строки и поддеревья ----------
 
     void SaveToString() {
-        std::cout << "Формат - три группы \"скобка буква скобка\", буквы К Л П (или N L R) в любом порядке.\n";
-        std::string format = AskLine("Формат (Enter = " + kDefaultTreeFormat + "): ");
-        if (format.empty())
-            format = kDefaultTreeFormat;
-        PrintLongText(tree_.ToFormattedString(format));
+        const std::string text = tree_.ToFormattedString(AskTreeFormat());
+        if (text.size() <= kTextPrintLimit ||
+            AskYesNo("Строка длинная. Показать её целиком?")) {
+            std::cout << text << '\n';
+        }
     }
 
     void Extract() {

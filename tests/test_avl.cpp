@@ -95,8 +95,9 @@ TEST(Avl, ValidAfterEveryOperation) {
     for (int value : MakeShuffled(n, 2)) {
         tree.Remove(value);
         EXPECT_TRUE(tree.IsValid());
-        if (!tree.IsEmpty())
+        if (!tree.IsEmpty()) {
             EXPECT_TRUE(HeightWithinAvlBound(tree));
+        }
     }
     EXPECT_TRUE(tree.IsEmpty());
 }

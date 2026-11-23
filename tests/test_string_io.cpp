@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -234,4 +235,64 @@ TEST(StringIo, DeepString) {
     BinarySearchTree<int> read = BinarySearchTree<int>::FromString(text, Balancing::kNone);
     EXPECT_EQ(read.GetHeight(), static_cast<std::size_t>(n));
     EXPECT_EQ(read.ToFormattedString(), text);
+}
+
+TEST(StringIo, RoundTripLongDouble) {
+    using Tree = BinarySearchTree<long double>;
+    const long double value = 1.0L + std::numeric_limits<long double>::epsilon();
+    Tree tree;
+    tree.Insert(value);
+
+    auto restored = Tree::FromString(tree.ToFormattedString());
+    ASSERT_EQ(restored.GetCount(), 1U);
+    EXPECT_TRUE(restored.Get(0) == value);
+}
+
+TEST(StringIo, ReadAllSixOrdersAndCustomDelimiters) {
+    using Tree = BinarySearchTree<std::string>;
+    Tree tree(Balancing::kNone);
+    for (const char* value : {"pear", "a|\\b", "zebra", "", "кириллица", "quince"})
+        tree.Insert(value);
+
+    const char* formats[] = {
+        "{К}(Л)[П]", "{К}[П](Л)", "(Л){К}[П]",
+        "(Л)[П]{К}", "[П]{К}(Л)", "[П](Л){К}",
+        "<L>|N|(R)", "{К}{Л}{П}", "|К||Л||П|", "[R}[L](N)",
+    };
+    for (const char* format : formats) {
+        SCOPED_TRACE(format);
+        const std::string text = tree.ToFormattedString(format);
+        auto read = Tree::FromString(text, format, Balancing::kNone);
+        EXPECT_EQ(read.ToFormattedString(), tree.ToFormattedString());
+        EXPECT_EQ(read.ToFormattedString(format), text);
+        EXPECT_TRUE(read.IsValid());
+
+        auto avl = Tree::FromString(text, format);
+        EXPECT_TRUE(SameElements(avl, tree));
+        EXPECT_TRUE(avl.IsValid());
+    }
+}
+
+TEST(StringIo, ReadCustomErrorsAndEmpty) {
+    using Tree = BinarySearchTree<int>;
+    EXPECT_TRUE(Tree::FromString("", "(Л){К}[П]").IsEmpty());
+    EXPECT_THROW(Tree::FromString("", "(Л){К}"), TreeFormatError);
+    EXPECT_THROW(Tree::FromString("((){8}[]){5}[]", "(Л){К}[П]"), TreeParseError);
+    EXPECT_THROW(Tree::FromString("[[]{5}()]{5}()", "[П]{К}(Л)"), TreeParseError);
+    EXPECT_THROW(Tree::FromString("(){5}[", "(Л){К}[П]"), TreeParseError);
+}
+
+TEST(StringIo, DeepCustomStringIsLoadedWithoutRecursiveInsert) {
+    using Tree = BinarySearchTree<int>;
+    constexpr int count = 100'000;
+    std::string text;
+    for (int value = 0; value < count; ++value)
+        text += "()" + std::string("{") + std::to_string(value) + "}[";
+    text.append(static_cast<std::size_t>(count), ']');
+
+    auto tree = Tree::FromString(text, "(Л){К}[П]", Balancing::kNone);
+    EXPECT_EQ(tree.GetHeight(), static_cast<std::size_t>(count));
+    EXPECT_EQ(tree.GetCount(), static_cast<std::size_t>(count));
+    EXPECT_EQ(tree.Get(static_cast<std::size_t>(count - 1)), count - 1);
+    EXPECT_EQ(tree.ToFormattedString("(Л){К}[П]"), text);
 }

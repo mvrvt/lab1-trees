@@ -210,3 +210,13 @@ TEST(Threading, ThreadDeepTree) {
     EXPECT_EQ(count, static_cast<std::size_t>(n));
     EXPECT_EQ(last, 0); // ЛПК: корень (0) - последним
 }
+
+TEST(Threading, InvalidOrderKeepsExistingThread) {
+    auto tree = MakeSampleTree();
+    tree.Thread(TraversalOrder::kLNR);
+
+    EXPECT_THROW(tree.Thread(static_cast<TraversalOrder>(999)), std::invalid_argument);
+    ASSERT_TRUE(tree.IsThreaded());
+    EXPECT_EQ(tree.GetThreadOrder(), TraversalOrder::kLNR);
+    EXPECT_TRUE(ArraysEqual(ThreadedToArray(tree), tree.ToArray()));
+}

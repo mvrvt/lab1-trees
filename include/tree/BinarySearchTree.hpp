@@ -207,6 +207,7 @@ public:
     // Сколько элементов меньше value (то есть индекс value по возрастанию),
     // или kNotFound, если value нет в дереве. O(h)
     std::size_t IndexOf(const T& value) const {
+        RequireFiniteValue(value);
         std::size_t index = 0;
         const Node* node = root_.get();
         while (node != nullptr) {
@@ -229,7 +230,7 @@ public:
     template <typename Func>
     void Traverse(TraversalOrder order, Func visit) const {
         const Node* root = root_.get();
-        TraverseNodes(root, order, [&visit](const Node* node) { visit(node->value); });
+        TraverseNodes(root, GetTraversalSteps(order), [&visit](const Node* node) { visit(node->value); });
     }
 
     // Все значения в заданном порядке (по умолчанию ЛКП - по возрастанию). O(n).
@@ -253,16 +254,20 @@ public:
 
     // Прошить дерево в заданном порядке. O(n) время, O(h) память (на время прошивки).
     void Thread(TraversalOrder order) {
+        const TraversalSteps steps = GetTraversalSteps(order);
+        ResetThreading();
+
+        Node* first = nullptr;
         Node* previous = nullptr;
-        thread_head_ = nullptr;
-        TraverseNodes(root_.get(), order, [this, &previous](Node* node) {
+        TraverseNodes(root_.get(), steps, [&first, &previous](Node* node) {
             node->next = nullptr;
             if (previous == nullptr)
-                thread_head_ = node; // первый узел цепочки
+                first = node;
             else
                 previous->next = node;
             previous = node;
         });
+        thread_head_ = first;
         thread_order_ = order;
         is_threaded_ = true;
     }
@@ -382,24 +387,64 @@ public:
                 continue;
             }
             const Node* child = (part.step == TraversalStep::kLeft) ? node->left.get() : node->right.get();
-            if (child != nullptr)
-                stack.Append(Frame{child, 0}); // скобку закроем, когда ребёнок закончится
-            else
-                result += part.close;          // пустое поддерево: "()"
+            if (child != nullptr) {
+                if (NeedsChildMarker(parsed, part))
+                    result += '\\';
+                stack.Append(Frame{child, 0});
+            } else {
+                result += part.close;
+            }
         }
         return result;
     }
 
-    // Прочитать дерево из строки фиксированного формата "{К}(Л)[П]" (см. TreeParser.hpp).
-    // Значения вставляются в порядке КЛП, поэтому при Balancing::kNone форма дерева
-    // совпадает со строкой. В режиме kAvl дерево само перебалансируется: элементы те же,
-    // а форма может отличаться. Бросает TreeParseError (с позицией ошибки), если строка
-    // неверна или описывает не дерево поиска. O(n log n) для AVL.
+    // Старый вызов читает в формате "{К}(Л)[П]".
     static BinarySearchTree<T> FromString(const std::string& text, Balancing balancing = Balancing::kAvl) {
-        DynamicArray<T> values = ParseTreeString<T>(text);
+        return FromString(text, kDefaultTreeFormat, balancing);
+    }
+
+    static BinarySearchTree<T> FromString(const std::string& text, const std::string& format,
+                                          Balancing balancing = Balancing::kAvl) {
+        const TreeFormat parsed_format = ParseTreeFormat(format);
+        const auto nodes = FormattedTreeParser<T>(text, parsed_format).Parse();
         BinarySearchTree<T> tree(balancing);
-        for (const T& value : values)
-            tree.Insert(value);
+        if (nodes.IsEmpty())
+            return tree;
+
+        if (balancing == Balancing::kAvl) {
+            // Воспроизводим прямой обход КЛП независимо от порядка групп формата.
+            DynamicArray<std::size_t> pending;
+            pending.Append(0);
+            while (!pending.IsEmpty()) {
+                const auto& node = nodes[pending.GetLast()];
+                pending.RemoveLast();
+                tree.Insert(node.value);
+                if (node.right != kNoParsedNode)
+                    pending.Append(node.right);
+                if (node.left != kNoParsedNode)
+                    pending.Append(node.left);
+            }
+            return tree;
+        }
+
+        // Сначала выделяем память для всех узлов. Затем соединяем их снизу
+        // вверх и вычисляем высоту и размер. Это сохраняет форму за O(n).
+        DynamicArray<std::unique_ptr<Node>> owned;
+        owned.Reserve(nodes.GetCount());
+        for (const auto& node : nodes)
+            owned.Append(std::make_unique<Node>(node.value));
+
+        for (std::size_t i = nodes.GetCount(); i > 0; --i) {
+            const auto& parsed = nodes[i - 1];
+            auto& node = owned[i - 1];
+            if (parsed.left != kNoParsedNode)
+                node->left = std::move(owned[parsed.left]);
+            if (parsed.right != kNoParsedNode)
+                node->right = std::move(owned[parsed.right]);
+            UpdateNode(node.get());
+        }
+        tree.root_ = std::move(owned[0]);
+        tree.size_ = nodes.GetCount();
         return tree;
     }
 
@@ -472,6 +517,7 @@ public:
 
     // true - вставили, false - такое значение уже было (дерево не изменилось)
     bool Insert(const T& value) {
+        RequireFiniteValue(value);
         bool inserted = InsertInto(root_, value);
         if (inserted) {
             ++size_;
@@ -482,6 +528,7 @@ public:
 
     // true - удалили, false - такого значения не было
     bool Remove(const T& value) {
+        RequireFiniteValue(value);
         bool removed = RemoveFrom(root_, value);
         if (removed) {
             --size_;
@@ -491,22 +538,16 @@ public:
     }
 
     // Удалить все узлы.
-    void Clear() {
-        // Если просто написать root_.reset(), деструктор корня вызовет деструкторы
-        // детей, те - своих детей и т.д. Это рекурсия глубиной h. У вырожденного
-        // дерева ("палки") h = n, и на 10^5 узлов стек может переполниться.
-        // Поэтому разбираем дерево вручную, со своим стеком в куче.
-        DynamicArray<std::unique_ptr<Node>> stack;
-        if (root_)
-            stack.Append(std::move(root_));
-        while (!stack.IsEmpty()) {
-            std::unique_ptr<Node> node = std::move(stack.GetLast());
-            stack.RemoveLast();
-            if (node->left)
-                stack.Append(std::move(node->left));
-            if (node->right)
-                stack.Append(std::move(node->right));
-            // здесь node удаляется, но детей у него уже нет -> рекурсии нет
+    void Clear() noexcept {
+        // Поворот поднимает левого ребёнка. Когда слева пусто, можно удалить
+        // корень и продолжить с правого ребёнка без рекурсии и аллокаций.
+        while (root_) {
+            if (root_->left) {
+                RotateRight(root_);
+            } else {
+                auto next = std::move(root_->right);
+                root_ = std::move(next);
+            }
         }
         size_ = 0;
         ResetThreading();
@@ -551,7 +592,7 @@ public:
         DynamicArray<std::size_t> starts;
         DynamicArray<std::size_t> centers;
         std::size_t width = 0;
-        TraverseNodes(root_.get(), TraversalOrder::kLNR, [&](const Node* node) {
+        TraverseNodes(root_.get(), GetTraversalSteps(TraversalOrder::kLNR), [&](const Node* node) {
             std::string label = ToText(node->value);
             if (label.empty())
                 label = "\"\""; // пустую строку показываем как "", иначе узла не видно
@@ -689,6 +730,7 @@ private:
 
     // Поиск без рекурсии: на каждом шаге уходим влево или вправо - O(h).
     const Node* FindNode(const T& value) const {
+        RequireFiniteValue(value);
         const Node* node = root_.get();
         while (node != nullptr) {
             if (value < node->value)
@@ -707,12 +749,11 @@ private:
     // NodePtr - тип указателя: const Node* (для обходов только чтения)
     // или Node* (для Thread, которая записывает в узлы next).
     template <typename NodePtr, typename Func>
-    static void TraverseNodes(NodePtr root, TraversalOrder order, Func visit) {
+    static void TraverseNodes(NodePtr root, const TraversalSteps& steps, Func visit) {
         struct Frame {
             NodePtr node = nullptr;
             int done_steps = 0;
         };
-        const TraversalSteps order_steps = GetTraversalSteps(order);
 
         DynamicArray<Frame> stack;
         if (root != nullptr)
@@ -726,7 +767,7 @@ private:
             // Копируем всё нужное ДО Append: при росте массива ссылка top
             // станет висячей (старый буфер удаляется)
             NodePtr node = top.node;
-            TraversalStep step = order_steps.steps[top.done_steps];
+            TraversalStep step = steps.steps[top.done_steps];
             ++top.done_steps;
 
             if (step == TraversalStep::kNode)
@@ -771,10 +812,12 @@ private:
             // Нашли удаляемый узел. Левого ребёнка нет (лист или только правый ребёнок):
             // на место узла встаёт правый ребёнок (или nullptr).
             // Старый узел удалится сам: unique_ptr освобождает то, чем владел раньше.
-            node = std::move(node->right);
+            auto child = std::move(node->right);
+            node = std::move(child);
         } else if (!node->right) {
             // Есть только левый ребёнок: он встаёт на место узла
-            node = std::move(node->left);
+            auto child = std::move(node->left);
+            node = std::move(child);
         } else {
             // Два ребёнка: на место узла ставим его ПРЕЕМНИКА -
             // минимальный узел правого поддерева. Он больше всего слева

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <algorithm> // std::min
-#include <cmath>     // std::isfinite, std::round, std::fabs
+#include <cmath>     // std::round, std::fabs
 #include <cstddef>
 #include <limits>
 #include <random>    // std::mt19937, распределения
@@ -189,14 +189,7 @@ struct ElementTraits<double> {
     static const char* KeyHint() { return ValueHint(); }
     static const char* ExampleTree() { return "{2.5}({-1}()[])[{10.75}()[]]"; }
 
-    // NaN в дереве поиска недопустим: NaN < x и x < NaN оба ложны, то есть NaN
-    // оказался бы "равен" любому числу и сломал бы порядок. Бесконечности тоже не пускаем.
-    static double Parse(const std::string& text) {
-        double value = ParseOrExplain<double>(text, ValueHint());
-        if (!std::isfinite(value))
-            throw std::invalid_argument("число должно быть конечным");
-        return value;
-    }
+    static double Parse(const std::string& text) { return ParseOrExplain<double>(text, ValueHint()); }
     static double ParseKey(const std::string& text) { return Parse(text); }
 
     // Два знака после запятой, диапазон растёт вместе с n
