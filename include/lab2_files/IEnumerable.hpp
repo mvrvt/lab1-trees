@@ -1,10 +1,12 @@
 #pragma once
 
+#include <memory>
+
 #include "IEnumerator.hpp"
 
 // Обёртка над IEnumerator<T>*, чтобы любую IEnumerable-коллекцию можно было
 // обходить циклом for (const T& item : collection).
-// Сама удаляет итератор в деструкторе, поэтому delete писать не нужно.
+// Владеет переданным итератором, в том числе если первый MoveNext бросит исключение.
 // Копировать нельзя (итератор у неё один), перемещать можно.
 template <class T>
 class EnumeratorIterator {
@@ -18,20 +20,8 @@ public:
     EnumeratorIterator(const EnumeratorIterator&) = delete;
     EnumeratorIterator& operator=(const EnumeratorIterator&) = delete;
 
-    EnumeratorIterator(EnumeratorIterator&& other) noexcept : enumerator_(other.enumerator_) {
-        other.enumerator_ = nullptr;
-    }
-
-    EnumeratorIterator& operator=(EnumeratorIterator&& other) noexcept {
-        if (this != &other) {
-            delete enumerator_;
-            enumerator_ = other.enumerator_;
-            other.enumerator_ = nullptr;
-        }
-        return *this;
-    }
-
-    ~EnumeratorIterator() { delete enumerator_; }
+    EnumeratorIterator(EnumeratorIterator&&) noexcept = default;
+    EnumeratorIterator& operator=(EnumeratorIterator&&) noexcept = default;
 
     const T& operator*() const { return enumerator_->Current(); }
     const T* operator->() const { return &enumerator_->Current(); }
@@ -47,13 +37,11 @@ public:
 
 private:
     void MoveToNext() {
-        if (enumerator_ != nullptr && !enumerator_->MoveNext()) {
-            delete enumerator_;
-            enumerator_ = nullptr;
-        }
+        if (enumerator_ && !enumerator_->MoveNext())
+            enumerator_.reset();
     }
 
-    IEnumerator<T>* enumerator_ = nullptr;
+    std::unique_ptr<IEnumerator<T>> enumerator_;
 };
 
 template <class T>

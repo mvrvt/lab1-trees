@@ -3,6 +3,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 
 #include "tree/ValueIo.hpp"
 
@@ -79,11 +80,15 @@ inline bool AskYesNo(const std::string& prompt) {
 }
 
 // Значение произвольного типа через функцию разбора parse (бросает std::invalid_argument
-// при ошибке). Повторяет вопрос, пока значение не прочитается.
+// при ошибке). Для std::string пустая строка и пробелы тоже являются значением.
 template <class T, class ParseFunc>
 T AskParsed(const std::string& prompt, ParseFunc parse) {
     while (true) {
-        std::string line = AskNonEmptyLine(prompt);
+        std::string line;
+        if constexpr (std::is_same_v<T, std::string>)
+            line = AskLine(prompt);
+        else
+            line = AskNonEmptyLine(prompt);
         try {
             return parse(line);
         } catch (const std::invalid_argument& error) {

@@ -177,6 +177,26 @@ TEST(Traversal, RangeFor) {
     EXPECT_EQ(count, 500);
 }
 
+TEST(Traversal, EnumeratorReleasedWhenFirstMoveThrows) {
+    struct ThrowingEnumerator final : IEnumerator<int> {
+        explicit ThrowingEnumerator(bool& released) : released_(released) {}
+        ~ThrowingEnumerator() override { released_ = true; }
+
+        bool MoveNext() override { throw std::runtime_error("MoveNext failed"); }
+        const int& Current() const override { throw std::logic_error("no current value"); }
+        void Reset() override {}
+
+        bool& released_;
+    };
+
+    bool released = false;
+    auto* enumerator = new ThrowingEnumerator(released);
+    EXPECT_THROW((void)EnumeratorIterator<int>(enumerator), std::runtime_error);
+    EXPECT_TRUE(released);
+    if (!released)
+        delete enumerator;
+}
+
 // ---------- Доступ по индексу (ICollection) ----------
 
 TEST(Traversal, GetByIndex) {

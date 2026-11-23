@@ -27,9 +27,8 @@ constexpr std::size_t kStructureForceLimit = 2000; // печать структ�
 constexpr std::size_t kValuesPrintLimit = 100;     // сколько значений обхода показывать
 constexpr std::size_t kTextPrintLimit = 4000;      // сколько байт строки-дерева показывать
 constexpr std::size_t kMaxAutoFill = 10'000'000;
-// Отсортированный вход без балансировки даёт "палку" высоты n. Вставка рекурсивна,
-// поэтому глубина рекурсии = n; 5000 проверено тестами, дальше - риск переполнить стек
-// (и время растёт как n^2).
+// Построение BST из монотонного ввода занимает O(n^2).
+// Ограничиваем такую автогенерацию, чтобы меню оставалось отзывчивым.
 constexpr std::size_t kMaxDegenerateFill = 5000;
 
 inline const char* BalancingName(Balancing balancing) {
@@ -260,8 +259,8 @@ private:
             std::size_t height = tree_.GetHeight();
             max_count = height < kMaxDegenerateFill ? kMaxDegenerateFill - height : 0;
             std::cout << "Без балансировки отсортированный вход превращает дерево в \"палку\":\n"
-                         "вставка стоит O(высоты), рекурсия уходит на глубину высоты. Поэтому высота\n"
-                         "дерева после заполнения не должна превысить "
+                         "построение требует квадратичного времени. Высота после автозаполнения\n"
+                         "не должна превысить "
                       << kMaxDegenerateFill << ".\n";
             if (max_count == 0) {
                 std::cout << "Дерево уже слишком высокое. Очистите его или заполняйте случайными значениями.\n";
@@ -475,9 +474,10 @@ private:
         bool equal = tree_ == other;
         std::cout << (equal ? "Равны" : "Не равны")
                   << " (== сравнивает множества элементов, форма не важна).\n";
-        if (equal)
-            std::cout << (tree_.ToFormattedString() == other.ToFormattedString() ? "Форма тоже совпадает.\n"
-                                                                                  : "Форма при этом разная.\n");
+        if (equal) {
+            const bool same_shape = tree_.ContainsSubtree(other);
+            std::cout << (same_shape ? "Форма тоже совпадает.\n" : "Форма при этом разная.\n");
+        }
     }
 
     // ---------- Проверка ----------

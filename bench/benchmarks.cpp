@@ -17,17 +17,19 @@
 // * входные данные - числа 0..n-1, перемешанные генератором с фиксированным seed:
 //   все запуски получают одни и те же данные.
 
+#include <charconv>
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <utility>
 
 #if defined(__APPLE__)
@@ -139,11 +141,18 @@ DynamicArray<std::size_t> Sizes(std::size_t from, std::size_t to) {
 }
 
 // ---------- Вывод ----------
+
+std::ofstream OpenCsv(const std::string& path) {
+    std::ofstream out(path);
+    if (!out)
+        throw std::runtime_error("cannot open " + path);
+    out.exceptions(std::ios::failbit | std::ios::badbit);
+    return out;
+}
+
 class Results {
 public:
-    explicit Results(const std::string& path) : out_(path) {
-        if (!out_)
-            throw std::runtime_error("cannot open " + path);
+    explicit Results(const std::string& path) : out_(OpenCsv(path)) {
         out_ << "test,variant,n,seconds,height\n";
     }
 
@@ -290,7 +299,7 @@ std::size_t HeapInUse() {
 // Реальный расход памяти на узел: занятая куча до и после построения AVL из n элементов.
 // Больше sizeof(узла), потому что malloc округляет размер блока вверх.
 void BenchMemory(const std::string& path, std::size_t max_n) {
-    std::ofstream out(path);
+    auto out = OpenCsv(path);
     out << "n,heap_bytes,bytes_per_node,sizeof_node\n";
     std::printf("\nПамять: sizeof(TreeNode<int>) = %zu байт\n", sizeof(TreeNode<int>));
     double last_per_node = 0;
@@ -300,6 +309,7 @@ void BenchMemory(const std::string& path, std::size_t max_n) {
         Tree tree = Build(input, Balancing::kAvl);
         std::size_t after = HeapInUse();
         if (before == 0 && after == 0) {
+            out.close();
             std::printf("  на этой системе занятую кучу узнать нельзя - замер памяти пропущен\n");
             return;
         }
@@ -308,6 +318,7 @@ void BenchMemory(const std::string& path, std::size_t max_n) {
         out << n << ',' << used << ',' << last_per_node << ',' << sizeof(TreeNode<int>) << '\n';
         std::printf("  n = %10zu  куча +%12zu байт  = %.1f байт на узел\n", n, used, last_per_node);
     }
+    out.close();
     std::printf("  => 10^8 узлов займут около %.1f ГБ\n", last_per_node * 1e8 / 1e9);
 }
 
@@ -316,9 +327,8 @@ void BenchMemory(const std::string& path, std::size_t max_n) {
 void RunAll(const std::string& dir, std::size_t max_n) {
     Results results(dir + "/benchmarks.csv");
 
-    // Обычное дерево на отсортированных данных - "палка": O(n^2) на построение
-    // и рекурсия InsertInto глубиной n. Поэтому только до 50 000, а обратный порядок
-    // (зеркальный случай, та же "палка", только влево) - до 20 000.
+    // Обычное BST на монотонном входе строится за O(n^2).
+    // Сохраняем прежние пределы замеров для сравнимости с сохранёнными графиками.
     const std::size_t degenerate_max = max_n < 50'000 ? max_n : 50'000;
     const std::size_t reversed_max = 20'000;
 
@@ -411,7 +421,13 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--huge") == 0) {
             huge = true;
         } else if (std::strcmp(argv[i], "--max") == 0 && i + 1 < argc) {
-            max_n = std::strtoull(argv[++i], nullptr, 10);
+            const char* first = argv[++i];
+            const char* last = first + std::strlen(first);
+            const auto parsed = std::from_chars(first, last, max_n);
+            if (parsed.ec != std::errc{} || parsed.ptr != last) {
+                std::fprintf(stderr, "--max must be a positive integer\n");
+                return 2;
+            }
         } else if (std::strcmp(argv[i], "--out") == 0 && i + 1 < argc) {
             dir = argv[++i];
         } else {
@@ -419,8 +435,8 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
-    if (max_n < 1000) {
-        std::fprintf(stderr, "--max must be at least 1000\n");
+    if (max_n < 1000 || max_n > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+        std::fprintf(stderr, "--max must be between 1000 and %d\n", std::numeric_limits<int>::max());
         return 2;
     }
 

@@ -113,7 +113,9 @@ public:
     // Указатели next копировать нельзя: они смотрели бы в узлы ДРУГОГО дерева.
     // Поэтому, если оригинал был прошит, копия прошивается заново в том же порядке.
     BinarySearchTree(const BinarySearchTree<T>& other)
-        : root_(CopySubtree(other.root_.get())), size_(other.size_), balancing_(other.balancing_) {
+        : BinarySearchTree(other.balancing_) {
+        CopyNodes(other.root_.get(), root_);
+        size_ = other.size_;
         if (other.is_threaded_)
             Thread(other.thread_order_);
     }
@@ -459,7 +461,7 @@ public:
         if (node == nullptr)
             throw ElementNotFound("BinarySearchTree::ExtractSubtree: element not found");
         BinarySearchTree<T> result(balancing_);
-        result.root_ = CopySubtree(node);
+        CopyNodes(node, result.root_);
         result.size_ = node->size;
         return result;
     }
@@ -668,19 +670,44 @@ public:
             return;
         }
         if (root_->right)
-            PrintBranch(out, root_->right.get(), "", false);
+            PrintBranch(out, root_->right.get(), false);
         out << root_->value << "\n";
         if (root_->left)
-            PrintBranch(out, root_->left.get(), "", true);
+            PrintBranch(out, root_->left.get(), true);
     }
 
-    // ---------- Проверка корректности (для тестов) ----------
-    // true, если для каждого узла выполняется свойство дерева поиска
-    // и число узлов совпадает с size_
+    // ЛКП проверяет глобальный порядок. Равенства высот и размеров
+    // проверяются у каждого узла с учётом метаданных обоих детей.
     bool IsValid() const {
-        int height = 0;
+        DynamicArray<const Node*> pending;
+        const Node* node = root_.get();
+        const Node* previous = nullptr;
         std::size_t count = 0;
-        return CheckSubtree(root_.get(), nullptr, nullptr, height, count) && count == size_;
+        while (node || !pending.IsEmpty()) {
+            while (node) {
+                pending.Append(node);
+                node = node->left.get();
+            }
+            node = pending.GetLast();
+            pending.RemoveLast();
+            if (previous && !(previous->value < node->value))
+                return false;
+
+            const int left_height = Height(node->left.get());
+            const int right_height = Height(node->right.get());
+            const int expected_height = 1 + (left_height > right_height ? left_height : right_height);
+            if (node->height != expected_height ||
+                node->size != 1 + Size(node->left.get()) + Size(node->right.get()))
+                return false;
+            const int difference = left_height - right_height;
+            if (balancing_ == Balancing::kAvl && (difference < -1 || difference > 1))
+                return false;
+
+            ++count;
+            previous = node;
+            node = node->right.get();
+        }
+        return count == size_;
     }
 
 private:
@@ -779,71 +806,102 @@ private:
         }
     }
 
-    // node - это ССЫЛКА на поле родителя (root_, или left/right какого-то узла).
-    // Поэтому, дойдя до пустого места, мы можем записать новый узел прямо туда.
-    bool InsertInto(std::unique_ptr<Node>& node, const T& value) {
-        if (!node) {
-            node = std::make_unique<Node>(value);
-            return true; // вставка состоялась: сообщаем об этом уровням выше
-        }
-        bool inserted = false;
-        if (value < node->value)
-            inserted = InsertInto(node->left, value);
-        else if (node->value < value)
-            inserted = InsertInto(node->right, value);
-        // иначе равное значение уже есть: inserted == false
+    using Link = std::unique_ptr<Node>*;
 
-        // Возвращаясь из рекурсии, проходим путь снизу вверх
-        // и чиним высоты и баланс всех узлов на этом пути
-        if (inserted)
-            Rebalance(node);
-        return inserted;
+    // Первые ссылки хранятся прямо в объекте пути. Высокое дерево
+    // продолжает путь в DynamicArray, не углубляя стек вызовов.
+    class AncestorPath {
+    public:
+        void Push(Link link) {
+            if (count_ < kInlineCount)
+                links_[count_] = link;
+            else
+                overflow_.Append(link);
+            ++count_;
+        }
+
+        Link Pop() {
+            --count_;
+            if (count_ < kInlineCount)
+                return links_[count_];
+            Link link = overflow_.GetLast();
+            overflow_.RemoveLast();
+            return link;
+        }
+
+        bool IsEmpty() const { return count_ == 0; }
+
+    private:
+        static constexpr std::size_t kInlineCount = 64;
+        Link links_[kInlineCount];
+        std::size_t count_ = 0;
+        DynamicArray<Link> overflow_;
+    };
+
+    Link LocateLink(std::unique_ptr<Node>& root, const T& value, AncestorPath& path) {
+        Link link = &root;
+        while (*link) {
+            Node* node = link->get();
+            Link child;
+            if (value < node->value)
+                child = &node->left;
+            else if (node->value < value)
+                child = &node->right;
+            else
+                break;
+            path.Push(link);
+            link = child;
+        }
+        return link;
     }
 
-    bool RemoveFrom(std::unique_ptr<Node>& node, const T& value) {
+    void RepairPath(AncestorPath& path) {
+        while (!path.IsEmpty())
+            Rebalance(*path.Pop());
+    }
+
+    bool InsertInto(std::unique_ptr<Node>& root, const T& value) {
+        AncestorPath path;
+        Link link = LocateLink(root, value, path);
+        if (*link)
+            return false;
+        *link = std::make_unique<Node>(value);
+        RepairPath(path);
+        return true;
+    }
+
+    bool RemoveFrom(std::unique_ptr<Node>& root, const T& value) {
+        AncestorPath path;
+        auto& node = *LocateLink(root, value, path);
         if (!node)
             return false;
-        bool removed = true;
-        if (value < node->value)
-            removed = RemoveFrom(node->left, value);
-        else if (node->value < value)
-            removed = RemoveFrom(node->right, value);
-        else if (!node->left) {
-            // Нашли удаляемый узел. Левого ребёнка нет (лист или только правый ребёнок):
-            // на место узла встаёт правый ребёнок (или nullptr).
-            // Старый узел удалится сам: unique_ptr освобождает то, чем владел раньше.
-            auto child = std::move(node->right);
-            node = std::move(child);
-        } else if (!node->right) {
-            // Есть только левый ребёнок: он встаёт на место узла
-            auto child = std::move(node->left);
+
+        if (!node->left || !node->right) {
+            auto child = node->left ? std::move(node->left) : std::move(node->right);
             node = std::move(child);
         } else {
-            // Два ребёнка: на место узла ставим его ПРЕЕМНИКА -
-            // минимальный узел правого поддерева. Он больше всего слева
-            // и меньше всего остального справа, поэтому порядок не нарушится.
-            std::unique_ptr<Node> successor = DetachMin(node->right);
+            // Преемник — минимальный узел правого поддерева.
+            auto successor = DetachMin(node->right);
             successor->left = std::move(node->left);
             successor->right = std::move(node->right);
-            node = std::move(successor); // старый узел (уже без детей) удаляется
-        }
-
-        if (removed && node)
+            node = std::move(successor);
             Rebalance(node);
-        return removed;
+        }
+        RepairPath(path);
+        return true;
     }
 
-    // Отцепить минимальный узел поддерева и вернуть его (дерево остаётся корректным)
-    std::unique_ptr<Node> DetachMin(std::unique_ptr<Node>& node) {
-        if (node->left) {
-            std::unique_ptr<Node> min_node = DetachMin(node->left);
-            Rebalance(node); // слева стало на один узел меньше
-            return min_node;
+    std::unique_ptr<Node> DetachMin(std::unique_ptr<Node>& root) {
+        AncestorPath path;
+        Link link = &root;
+        while ((*link)->left) {
+            path.Push(link);
+            link = &(*link)->left;
         }
-        // У минимального узла нет левого ребёнка, а правый встаёт на его место
-        std::unique_ptr<Node> min_node = std::move(node);
-        node = std::move(min_node->right);
-        return min_node;
+        auto minimum = std::move(*link);
+        *link = std::move(minimum->right);
+        RepairPath(path);
+        return minimum;
     }
 
     // ---------- AVL: высоты, баланс, повороты ----------
@@ -924,60 +982,64 @@ private:
 
     // ---------- Вспомогательное ----------
 
-    // Рекурсивная глубокая копия дерева (вместе с высотами)
-    static std::unique_ptr<Node> CopySubtree(const Node* node) {
-        if (node == nullptr)
-            return nullptr;
-        auto copy = std::make_unique<Node>(node->value);
-        copy->height = node->height;
-        copy->size = node->size;
-        copy->left = CopySubtree(node->left.get());
-        copy->right = CopySubtree(node->right.get());
-        return copy;
+    // Каждый созданный узел сразу принадлежит дереву-приёмнику.
+    // Если копирование значения бросит исключение, Clear() освободит его итеративно.
+    static void CopyNodes(const Node* source, std::unique_ptr<Node>& destination) {
+        struct Pending {
+            const Node* source;
+            Link destination;
+        };
+        if (!source)
+            return;
+        DynamicArray<Pending> pending;
+        pending.Append(Pending{source, &destination});
+        while (!pending.IsEmpty()) {
+            const Pending item = pending.GetLast();
+            pending.RemoveLast();
+
+            *item.destination = std::make_unique<Node>(item.source->value);
+            Node* copy = item.destination->get();
+            copy->height = item.source->height;
+            copy->size = item.source->size;
+            if (item.source->right)
+                pending.Append(Pending{item.source->right.get(), &copy->right});
+            if (item.source->left)
+                pending.Append(Pending{item.source->left.get(), &copy->left});
+        }
     }
 
-    // Одна ветка для PrintStructure.
-    // prefix - то, что печатается слева от узла (вертикальные линии предков);
-    // is_left - узел левый ребёнок (рисуется снизу, "└──") или правый (сверху, "┌──").
-    static void PrintBranch(std::ostream& out, const Node* node, const std::string& prefix, bool is_left) {
-        if (node->right)
-            PrintBranch(out, node->right.get(), prefix + (is_left ? "│   " : "    "), false);
-        out << prefix << (is_left ? "└── " : "┌── ") << node->value << "\n";
-        if (node->left)
-            PrintBranch(out, node->left.get(), prefix + (is_left ? "    " : "│   "), true);
-    }
-
-        // Проверяет поддерево; если всё верно, записывает в height и count его настоящие
-    // высоту и число узлов и возвращает true.
-    // min и max - границы, в которых должны лежать значения поддерева (nullptr - границы нет).
-    // Проверять только "левый ребёнок < узел" мало: внук может нарушить порядок относительно деда.
-    bool CheckSubtree(const Node* node, const T* min, const T* max, int& height, std::size_t& count) const {
-        height = 0;
-        count = 0;
-        if (node == nullptr)
-            return true;
-        if (min != nullptr && !(*min < node->value))
-            return false;
-        if (max != nullptr && !(node->value < *max))
-            return false;
-
-        int left_height = 0;
-        int right_height = 0;
-        std::size_t left_count = 0;
-        std::size_t right_count = 0;
-        if (!CheckSubtree(node->left.get(), min, &node->value, left_height, left_count))
-            return false;
-        if (!CheckSubtree(node->right.get(), &node->value, max, right_height, right_count))
-            return false;
-
-        height = 1 + (left_height > right_height ? left_height : right_height);
-        count = 1 + left_count + right_count;
-        if (node->height != height || node->size != count)
-            return false;
-        int difference = left_height - right_height;
-        if (balancing_ == Balancing::kAvl && (difference > 1 || difference < -1))
-            return false;
-        return true;
+    static void PrintBranch(std::ostream& out, const Node* node, bool is_left) {
+        struct Frame {
+            const Node* node;
+            bool is_left;
+            int step = 0;
+            std::size_t parent_prefix_size = 0;
+        };
+        std::string prefix;
+        DynamicArray<Frame> pending;
+        pending.Append(Frame{node, is_left});
+        while (!pending.IsEmpty()) {
+            Frame& frame = pending.GetLast();
+            if (frame.step == 0) {
+                ++frame.step;
+                if (frame.node->right) {
+                    const std::size_t length = prefix.size();
+                    prefix += frame.is_left ? "│   " : "    ";
+                    pending.Append(Frame{frame.node->right.get(), false, 0, length});
+                }
+            } else if (frame.step == 1) {
+                ++frame.step;
+                out << prefix << (frame.is_left ? "└── " : "┌── ") << frame.node->value << '\n';
+                if (frame.node->left) {
+                    const std::size_t length = prefix.size();
+                    prefix += frame.is_left ? "    " : "│   ";
+                    pending.Append(Frame{frame.node->left.get(), true, 0, length});
+                }
+            } else {
+                prefix.resize(frame.parent_prefix_size);
+                pending.RemoveLast();
+            }
+        }
     }
 
     std::unique_ptr<Node> root_; // по умолчанию = nullptr

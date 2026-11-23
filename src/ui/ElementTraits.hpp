@@ -7,10 +7,12 @@
 #include <random>    // std::mt19937, распределения
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "tree/BinarySearchTree.hpp"
 #include "tree/ValueIo.hpp"
 #include "types/Person.hpp"
+#include "ui/DoubleSum.hpp"
 
 // ========== Всё, что меню должно знать о типе элементов ==========
 // Меню (TreeMenu.hpp) написано один раз для любого T. Особенности конкретного типа
@@ -104,13 +106,16 @@ std::string ReduceCount(const BinarySearchTree<T>& tree, TraversalOrder order) {
 // Хорошо видно, что порядок обхода влияет на результат Reduce.
 template <class T>
 std::string ReduceJoin(const BinarySearchTree<T>& tree, TraversalOrder order) {
-    return "\"" +
-           tree.Reduce(
-               [](const T& value, std::string acc) {
-                   return acc.empty() ? ToText(value) : acc + "; " + ToText(value);
-               },
-               std::string(), order) +
-           "\"";
+    bool first = true;
+    return "\"" + tree.Reduce(
+        [&first](const T& value, std::string& acc) {
+            if (!first)
+                acc += "; ";
+            first = false;
+            acc += ToText(value);
+            return std::move(acc);
+        },
+        std::string(), order) + "\"";
 }
 
 template <class T>
@@ -163,7 +168,9 @@ struct ElementTraits<int> {
                      [](const int& x, long long acc) { return CheckedAdd(acc, x); }, 0LL, order));
              }},
             {"максимум",
-             [](const BinarySearchTree<int>& tree, TraversalOrder order) {
+             [](const BinarySearchTree<int>& tree, TraversalOrder order) -> std::string {
+                 if (tree.IsEmpty())
+                     return "нет элементов";
                  return std::to_string(tree.Reduce(
                      [](const int& x, int acc) { return x > acc ? x : acc; },
                      std::numeric_limits<int>::min(), order));
@@ -217,18 +224,23 @@ struct ElementTraits<double> {
         };
         return MakeList(entries);
     }
+    static std::string SumOrMean(const BinarySearchTree<double>& tree, TraversalOrder order, bool mean) {
+        if (mean && tree.IsEmpty())
+            return "нет элементов";
+        detail::DoubleSum sum;
+        tree.Traverse(order, [&sum](double value) { sum.Add(value); });
+        return ToText(sum.Result(mean ? tree.GetCount() : 1));
+    }
+
     static EntryList<ReduceEntry<double>> Reduces() {
         static const ReduceEntry<double> entries[] = {
             {"сумма",
              [](const BinarySearchTree<double>& tree, TraversalOrder order) {
-                 return ToText(tree.Reduce([](const double& x, double acc) { return acc + x; }, 0.0, order));
+                 return SumOrMean(tree, order, false);
              }},
             {"среднее",
-             [](const BinarySearchTree<double>& tree, TraversalOrder order) -> std::string {
-                 if (tree.IsEmpty())
-                     return "нет элементов";
-                 double sum = tree.Reduce([](const double& x, double acc) { return acc + x; }, 0.0, order);
-                 return ToText(sum / static_cast<double>(tree.GetCount()));
+             [](const BinarySearchTree<double>& tree, TraversalOrder order) {
+                 return SumOrMean(tree, order, true);
              }},
             {"количество элементов", ReduceCount<double>},
             {"сцепить в строку", ReduceJoin<double>},
@@ -329,7 +341,10 @@ struct PersonTraitsBase {
     }
     // Для поиска и удаления достаточно id: дерево сравнивает только его
     static P ParseKey(const std::string& text) {
-        return P(ToIntChecked(ParseOrExplain<long long>(text, KeyHint())));
+        const int id = ToIntChecked(ParseOrExplain<long long>(text, KeyHint()));
+        if (id < 0)
+            throw std::invalid_argument(KeyHint());
+        return P(id);
     }
 
     static P Make(int id, std::mt19937& rng) {
@@ -365,7 +380,13 @@ struct PersonTraitsBase {
             {"id % 100 (записи с одинаковым результатом сольются)",
              [](const P& p) { P r = p; r.id = p.id % 100; return r; }},
             {"год рождения + 1 (порядок не меняется: он только по id)",
-             [](const P& p) { P r = p; ++r.birth_year; return r; }},
+             [](const P& p) {
+                 if (p.birth_year >= Person::kMaxBirthYear)
+                     throw std::out_of_range("год рождения после преобразования выходит за допустимый диапазон");
+                 P result = p;
+                 ++result.birth_year;
+                 return result;
+             }},
         };
         return MakeList(entries);
     }
@@ -380,7 +401,9 @@ struct PersonTraitsBase {
     static EntryList<ReduceEntry<P>> Reduces() {
         static const ReduceEntry<P> entries[] = {
             {"самый ранний год рождения",
-             [](const BinarySearchTree<P>& tree, TraversalOrder order) {
+             [](const BinarySearchTree<P>& tree, TraversalOrder order) -> std::string {
+                 if (tree.IsEmpty())
+                     return "нет элементов";
                  return std::to_string(tree.Reduce(
                      [](const P& p, int acc) { return p.birth_year < acc ? p.birth_year : acc; },
                      Person::kMaxBirthYear, order));

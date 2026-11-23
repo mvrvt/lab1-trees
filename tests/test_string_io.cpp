@@ -295,4 +295,43 @@ TEST(StringIo, DeepCustomStringIsLoadedWithoutRecursiveInsert) {
     EXPECT_EQ(tree.GetCount(), static_cast<std::size_t>(count));
     EXPECT_EQ(tree.Get(static_cast<std::size_t>(count - 1)), count - 1);
     EXPECT_EQ(tree.ToFormattedString("(Л){К}[П]"), text);
+    EXPECT_TRUE(tree.IsValid());
+
+    auto copy = tree.ExtractSubtree(0);
+    EXPECT_TRUE(copy.Insert(count));
+    ASSERT_TRUE(copy.Remove(count - 1));
+    EXPECT_TRUE(copy.IsValid());
+    EXPECT_EQ(copy.GetMax(), count);
+    EXPECT_EQ(tree.GetMax(), count - 1);
+
+    tree.Thread(TraversalOrder::kLNR);
+    Tree threaded_copy(tree);
+    ASSERT_TRUE(threaded_copy.IsThreaded());
+    std::size_t visited = 0;
+    threaded_copy.TraverseThreaded([&visited](int value) {
+        EXPECT_EQ(static_cast<std::size_t>(value), visited);
+        ++visited;
+    });
+    EXPECT_EQ(visited, static_cast<std::size_t>(count));
+}
+
+TEST(StringIo, RemoveRootWithDeepSuccessor) {
+    using Tree = BinarySearchTree<int>;
+    constexpr int depth = 100'000;
+    std::string text = "{0}({-1}()[])[";
+    for (int i = depth; i > 1; --i)
+        text += "{" + std::to_string(2 * i) + "}(";
+    text += "{2}()[{3}()[]]";
+    for (int i = 1; i < depth; ++i)
+        text += ")[]";
+    text += ']';
+
+    auto tree = Tree::FromString(text, Balancing::kNone);
+    ASSERT_TRUE(tree.IsValid());
+    ASSERT_TRUE(tree.Remove(0));
+    ASSERT_TRUE(tree.IsValid());
+    EXPECT_FALSE(tree.Contains(0));
+    EXPECT_TRUE(tree.Contains(3));
+    EXPECT_EQ(tree.Get(1), 2);
+    EXPECT_EQ(tree.GetCount(), static_cast<std::size_t>(depth + 2));
 }

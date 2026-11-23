@@ -71,9 +71,11 @@ add_executable(tests
     tests/test_string_io.cpp
     tests/test_subtree_ops.cpp
     tests/test_person.cpp
+    tests/test_ui.cpp
 )
 # gtest_main даёт готовую функцию main, которая запускает все TEST(...)
 target_link_libraries(tests PRIVATE trees GTest::gtest_main)
+target_include_directories(tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(tests PRIVATE ${WARNING_FLAGS})
 
 # Регистрация тестов в CTest: можно запускать и "./tests", и "ctest"
