@@ -40,8 +40,6 @@ struct Person {
           birth_year(new_birth_year) {}
 };
 
-// Наследование без virtual: объекты всегда хранятся по значению (в дереве -
-// BinarySearchTree<Student>), удаления через указатель на Person нет.
 struct Student : Person {
     std::string group;
 
@@ -53,7 +51,7 @@ struct Student : Person {
 };
 
 struct Teacher : Person {
-    std::string department;
+    std::string department; 
 
     Teacher() = default;
     explicit Teacher(int new_id, std::string new_last_name = {}, std::string new_first_name = {},
@@ -63,7 +61,6 @@ struct Teacher : Person {
 };
 
 // ---------- Порядок (для дерева) ----------
-// Один оператор на всех: Student и Teacher неявно приводятся к const Person&.
 inline bool operator<(const Person& a, const Person& b) {
     return a.id < b.id;
 }

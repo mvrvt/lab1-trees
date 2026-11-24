@@ -16,47 +16,37 @@
 #include "tree/Traversal.hpp"
 #include "tree/ValueIo.hpp"
 
-// Узел дерева.
-// Владение: родитель ВЛАДЕЕТ детьми через std::unique_ptr
-// Удалили узел -> unique_ptr сам удалил его детей.
 template <typename T>
 struct TreeNode {
     T value;
     std::unique_ptr<TreeNode<T>> left;
     std::unique_ptr<TreeNode<T>> right;
-    int height = 1; // высота поддерева с корнем в этом узле (лист - 1).
-    std::size_t size = 1; // число узлов в этом поддереве (лист - 1).
-    // Прошивка: следующий узел в порядке выбранного обхода (nullptr - последний).
-    // НЕ владеющий указатель: узлами владеют unique_ptr left/right, next только "смотрит".
-    // Имеет смысл, только пока дерево прошито (см. BinarySearchTree::Thread).
+    int height = 1; 
+    std::size_t size = 1; // размер 
+    
     TreeNode<T>* next = nullptr;
 
     explicit TreeNode(const T& new_value) : value(new_value) {}
 };
 
 enum class Balancing {
-    kNone, // обычное дерево поиска: на отсортированных данных вырождается в "палку"
+    kNone, // обычное дерево поиска
     kAvl, // AVL-дерево: после каждой вставки/удаления выравнивается поворотами
 };
 
 // ========== BinarySearchTree<T> - бинарное дерево поиска ==========
-// Требования к T: копирование и operator<.
-// Других сравнений не нужно: a и b считаются равными, если !(a < b) && !(b < a).
-// Одинаковые значения не хранятся: дерево ведёт себя как множество (set).
-// Вставка, поиск, удаление - O(h), где h - высота дерева:
-//   Balancing::kAvl  -> h <= 1.44 * log2(n), то есть O(log n) всегда;
-//   Balancing::kNone -> h от log2(n) до n (в худшем случае O(n)).
+// Для хранения и поиска T должен копироваться и поддерживать operator<.
+// Строковый ввод и вывод дополнительно требуют преобразования T из текста и в текст.
 template <typename T>
 class BinarySearchTree : public ICollection<T>, public IEnumerable<T> {
 public:
     using Node = TreeNode<T>;
-    // Результат IndexOf, если эл-нт не найден (как в Sequence)
+    // Результат IndexOf, если эл-нт не найден
     static constexpr std::size_t kNotFound = static_cast<std::size_t>(-1);
 
     // ---------- Итератор для IEnumerable: симметричный обход (ЛКП), по возрастанию ----------
     // Хранит стек узлов, до которых ещё нужно дойти. Весь обход - O(n), один шаг - O(1)
-    // в среднем, память - O(h). Если дерево изменить во время обхода, итератор
-    // становится недействительным (как у любых коллекций).
+    // в среднем, память - O(h). Если дерево изменить во время обхода, итератор становится недействительным.
     class TreeEnumerator : public IEnumerator<T> {
     public:
         explicit TreeEnumerator(const Node* root) : root_(root) {}
@@ -108,9 +98,6 @@ public:
 
     explicit BinarySearchTree(Balancing balancing = Balancing::kAvl) : balancing_(balancing) {}
 
-    // Глубокая копия: копируются все узлы, а не только указатель на корень.
-    // Указатели next копировать нельзя: они смотрели бы в узлы ДРУГОГО дерева.
-    // Поэтому, если оригинал был прошит, копия прошивается заново в том же порядке.
     BinarySearchTree(const BinarySearchTree<T>& other)
         : BinarySearchTree(other.balancing_) {
         CopyNodes(other.root_.get(), root_);
@@ -152,14 +139,11 @@ public:
     std::size_t GetCount() const override { return size_; }
     Balancing GetBalancing() const { return balancing_; }
 
-    // Высота: пустое дерево - 0, один узел - 1. O(1): высота хранится в корне
     std::size_t GetHeight() const { return static_cast<std::size_t>(Height(root_.get())); }
 
     // ---------- Поиск ----------
     bool Contains(const T& value) const { return FindNode(value) != nullptr; }
 
-    // Найденное значение, равное value. Бросает ElementNotFound, если его нет.
-    // Пригодится в ЛР2: ищем по ключу - получаем всю пару (ключ, данные).
     const T& Find(const T& value) const {
         const Node* node = FindNode(value);
         if (node == nullptr)
@@ -187,7 +171,6 @@ public:
     // ---------- Доступ по индексу (ICollection) ----------
 
     // index-й по возрастанию элемент (Get(0) - минимум). O(h).
-    // Бросает IndexOutOfRange, если index >= GetCount().
     const T& Get(std::size_t index) const override {
         if (index >= size_)
             throw IndexOutOfRange("BinarySearchTree::Get: index out of range");
@@ -205,8 +188,7 @@ public:
         }
     }
 
-    // Сколько элементов меньше value (то есть индекс value по возрастанию),
-    // или kNotFound, если value нет в дереве. O(h)
+    // Сколько элементов меньше value (то есть индекс value по возрастанию).
     std::size_t IndexOf(const T& value) const {
         RequireFiniteValue(value);
         std::size_t index = 0;
@@ -335,7 +317,6 @@ public:
         return result;
     }
 
-    // Свёртка, как в ТЗ: reduce(f, [a1, ..., an], c) = f(an, f(a(n-1), ... f(a2, f(a1, c))...)).
     // То есть func(элемент, накопленное) -> новое накопленное, начиная с initial.
     // Элементы берутся в порядке order (по умолчанию ЛКП - по возрастанию). O(n).
     // T2 - тип результата, выводится из initial: сумма int в long long - Reduce(f, 0LL).
@@ -453,8 +434,7 @@ public:
 
     // Копия поддерева с корнем в узле, равном value. Исходное дерево не меняется.
     // Режим балансировки - как у исходного. Поддерево AVL-дерева - тоже корректное
-    // AVL-дерево (каждый его узел сбалансирован), поэтому форму можно копировать как есть.
-    // Бросает ElementNotFound, если value нет. O(h + m), m - размер поддерева.
+    // AVL-дерево (каждый его узел сбалансирован). O(h + m).
     BinarySearchTree<T> ExtractSubtree(const T& value) const {
         const Node* node = FindNode(value);
         if (node == nullptr)
@@ -465,11 +445,7 @@ public:
         return result;
     }
 
-    // Есть ли в дереве узел, поддерево которого полностью (по форме и значениям,
-    // вместе с листьями) совпадает с pattern. Пустой pattern содержится в любом дереве.
-    // В дереве поиска значения не повторяются, поэтому кандидат в корень вхождения
-    // ровно один: находим его спуском за O(h) и сравниваем поддеревья за O(m).
-    // Итого O(h + m), а не O(n * m), как в произвольном бинарном дереве.
+    // находим кандидат в корень входжения спуском за O(h) и сравниваем поддеревья за O(m). Итого О(h + m).
     bool ContainsSubtree(const BinarySearchTree<T>& pattern) const {
         if (!pattern.root_)
             return true;
@@ -483,7 +459,7 @@ public:
 
     // Добавить в дерево все элементы other (объединение множеств).
     // Возвращает, сколько элементов действительно добавилось (повторы не считаются).
-    // Порядок вставки КЛП - по той же причине, что в Map. O(m log(n + m)) для AVL.
+    // Порядок вставки КЛП.
     std::size_t Merge(const BinarySearchTree<T>& other) {
         if (&other == this)
             return 0; // a.Merge(a): всё и так уже есть
@@ -496,8 +472,12 @@ public:
     }
 
     // ---------- Операторы ----------
-    // Составные присваивания - члены класса: они меняют левый операнд (*this).
-    // +, ==, !=, << - свободные функции (объявлены после класса).
+    // Доступ только для чтения: изменение ключа на месте нарушило бы порядок поиска.
+    const T& operator[](std::size_t index) const {
+        return Get(index);
+    }
+
+    // Составные присваивания меняют текущее дерево, а + и - возвращают копию с изменениями.
 
     BinarySearchTree<T>& operator+=(const T& value) {
         Insert(value);
@@ -514,34 +494,51 @@ public:
         return *this;
     }
 
+    // Разность множеств: удалить все ключи из other, которые есть в текущем дереве.
+    BinarySearchTree<T>& operator-=(const BinarySearchTree<T>& other) {
+        if (&other == this) {
+            Clear();
+        } else {
+            other.Traverse(TraversalOrder::kNLR, [this](const T& value) { Remove(value); });
+        }
+        return *this;
+    }
+
+    BinarySearchTree<T> operator+(const T& value) const {
+        BinarySearchTree<T> result(*this);
+        result += value;
+        return result;
+    }
+
+    BinarySearchTree<T> operator-(const T& value) const {
+        BinarySearchTree<T> result(*this);
+        result -= value;
+        return result;
+    }
+
     // ---------- Изменение ----------
 
-    // true - вставили, false - такое значение уже было (дерево не изменилось)
     bool Insert(const T& value) {
         RequireFiniteValue(value);
         bool inserted = InsertInto(root_, value);
         if (inserted) {
             ++size_;
-            ResetThreading(); // дерево изменилось - прошивка устарела
+            ResetThreading(); 
         }
         return inserted;
     }
 
-    // true - удалили, false - такого значения не было
     bool Remove(const T& value) {
         RequireFiniteValue(value);
         bool removed = RemoveFrom(root_, value);
         if (removed) {
             --size_;
-            ResetThreading(); // иначе в цепочке остался бы next на удалённый узел
+            ResetThreading(); 
         }
         return removed;
     }
 
-    // Удалить все узлы.
     void Clear() noexcept {
-        // Поворот поднимает левого ребёнка. Когда слева пусто, можно удалить
-        // корень и продолжить с правого ребёнка без рекурсии и аллокаций.
         while (root_) {
             if (root_->left) {
                 RotateRight(root_);
@@ -845,10 +842,10 @@ private:
     static void RotateRight(std::unique_ptr<Node>& node) {
         std::unique_ptr<Node> new_root = std::move(node->left); // L
         node->left = std::move(new_root->right);                // В переходит к node
-        UpdateNode(node.get());                               // node теперь ниже L
-        new_root->right = std::move(node);                      // node становится правым ребёнком L
+        UpdateNode(node.get());
+        new_root->right = std::move(node); 
         UpdateNode(new_root.get());
-        node = std::move(new_root);                             // L встаёт на место node у родителя
+        node = std::move(new_root);
     }
 
     /* Левый поворот вокруг node - зеркальное отражение правого:
@@ -868,21 +865,17 @@ private:
         node = std::move(new_root);
     }
 
-    // Вызывается для каждого узла на пути от изменённого места к корню.
-    // Высоты детей node к этому моменту уже правильные.
     void Rebalance(std::unique_ptr<Node>& node) {
         UpdateNode(node.get());
         if (balancing_ == Balancing::kNone)
-            return; // Обычное дерево: только поддерживаем высоты
+            return; 
 
         int balance = BalanceFactor(node.get());
         if (balance > 1) {
-            // Левое поддерево выше на 2
             if (BalanceFactor(node->left.get()) < 0)
                 RotateLeft(node->left); // случай "лево-право": сначала превращаем в "лево-лево"
             RotateRight(node);          // случай "лево-лево"
         } else if (balance < -1) {
-            // Правое поддерево выше на 2 - всё зеркально
             if (BalanceFactor(node->right.get()) > 0)
                 RotateRight(node->right); // случай "право-лево"
             RotateLeft(node);             // случай "право-право"
@@ -891,8 +884,6 @@ private:
 
     // ---------- Вспомогательное ----------
 
-    // Каждый созданный узел сразу принадлежит дереву-приёмнику.
-    // Если копирование значения бросит исключение, Clear() освободит его итеративно.
     static void CopyNodes(const Node* source, std::unique_ptr<Node>& destination) {
         struct Pending {
             const Node* source;
@@ -957,7 +948,7 @@ private:
         }
     }
 
-    std::unique_ptr<Node> root_; // по умолчанию = nullptr
+    std::unique_ptr<Node> root_; 
     std::size_t size_ = 0;
     Balancing balancing_ = Balancing::kAvl;
 
@@ -975,6 +966,13 @@ template <typename T>
 BinarySearchTree<T> operator+(const BinarySearchTree<T>& a, const BinarySearchTree<T>& b) {
     BinarySearchTree<T> result(a);
     result += b;
+    return result;
+}
+
+template <typename T>
+BinarySearchTree<T> operator-(const BinarySearchTree<T>& a, const BinarySearchTree<T>& b) {
+    BinarySearchTree<T> result(a);
+    result -= b;
     return result;
 }
 

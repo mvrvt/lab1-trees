@@ -60,7 +60,7 @@ T ParseValue(const std::string& text) {
         in >> value;
         if (in.fail())
             throw std::invalid_argument("cannot read a value from '" + text + "'");
-        in >> std::ws; // пробелы в конце разрешены
+        in >> std::ws;
         if (!in.eof())
             throw std::invalid_argument("extra characters after the value in '" + text + "'");
         RequireFiniteValue(value);
