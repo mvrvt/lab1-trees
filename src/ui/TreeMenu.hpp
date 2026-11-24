@@ -10,7 +10,6 @@
 #include "tree/BinarySearchTree.hpp"
 #include "ui/ElementTraits.hpp"
 #include "ui/Input.hpp"
-#include "ui/Terminal.hpp"
 
 // ========== Меню работы с деревом ==========
 // Один шаблонный класс для всех типов элементов: TreeMenu<int>, TreeMenu<Student>, ...
@@ -116,24 +115,10 @@ private:
         std::cout << "   0. Назад (выбор типа)\n";
     }
 
-    // Обычный вид "сверху вниз", если дерево помещается по ширине терминала
-    static bool PrintVertical(const Tree& tree) {
-        return tree.PrintVertical(std::cout, TerminalWidth());
-    }
-
-    static void PrintSideways(const Tree& tree) {
-        std::cout << "(Сверху вниз не помещается в ширину терминала - печатаю на боку:\n"
-                     " корень слева, правые потомки выше, левые ниже. Можно расширить окно.)\n";
-        tree.PrintStructure(std::cout);
-    }
-
-    // После изменений: сверху вниз; если не влезает - на боку (для небольших деревьев);
-    // иначе только размер и высота
+    // После изменений печатаем небольшие деревья, для больших показываем сводку.
     static void PrintTree(const Tree& tree) {
-        if (PrintVertical(tree))
-            return;
         if (tree.GetCount() <= kStructurePrintLimit) {
-            PrintSideways(tree);
+            tree.PrintStructure(std::cout);
         } else {
             std::cout << "(дерево большое: " << tree.GetCount() << " элементов, высота " << tree.GetHeight()
                       << "; структура - пункт 10)\n";
@@ -351,19 +336,18 @@ private:
     // ---------- Обход и печать ----------
 
     void ShowStructure() {
-        if (!PrintVertical(tree_)) {
-            if (tree_.GetCount() > kStructureForceLimit) {
-                std::cout << "Дерево слишком большое для печати (" << tree_.GetCount() << " элементов, предел "
-                          << kStructureForceLimit << ").\n";
-                return;
-            }
-            if (tree_.GetCount() > kStructurePrintLimit &&
-                !AskYesNo("В дереве " + std::to_string(tree_.GetCount()) + " элементов. Печатать на боку?"))
-                return;
-            PrintSideways(tree_);
+        const std::size_t count = tree_.GetCount();
+        if (count > kStructureForceLimit) {
+            std::cout << "Дерево слишком большое для печати (" << count << " элементов, предел "
+                      << kStructureForceLimit << ").\n";
+            return;
         }
+        if (count > kStructurePrintLimit &&
+            !AskYesNo("В дереве " + std::to_string(count) + " элементов. Печатать структуру?"))
+            return;
+        tree_.PrintStructure(std::cout);
         std::cout << "Элементы (operator<<): ";
-        if (tree_.GetCount() <= kValuesPrintLimit)
+        if (count <= kValuesPrintLimit)
             std::cout << tree_ << "\n";
         else
             PrintValues(tree_, TraversalOrder::kLNR);

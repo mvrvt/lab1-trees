@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 
+#include "types/Complex.hpp"
 #include "types/Person.hpp"
 #include "ui/Demo.hpp"
 #include "ui/Input.hpp"
@@ -29,8 +30,9 @@ void RunMainMenu() {
                      "  4. Student (id Фамилия Имя год группа)\n"
                      "  5. Teacher (id Фамилия Имя год кафедра)\n"
                      "  6. Демонстрация без ввода\n"
+                     "  7. Complex (комплексное число в формате (a,b))\n"
                      "  0. Выход\n";
-        switch (ui::AskChoice(6)) {
+        switch (ui::AskChoice(7)) {
         case 0: return;
         case 1: ui::RunTreeMenu<int>(AskBalancing()); break;
         case 2: ui::RunTreeMenu<double>(AskBalancing()); break;
@@ -38,6 +40,7 @@ void RunMainMenu() {
         case 4: ui::RunTreeMenu<Student>(AskBalancing()); break;
         case 5: ui::RunTreeMenu<Teacher>(AskBalancing()); break;
         case 6: std::cout << "\n"; ui::RunDemo(); break;
+        case 7: ui::RunTreeMenu<Complex>(AskBalancing()); break;
         }
     }
 }

@@ -11,6 +11,7 @@
 
 #include "tree/BinarySearchTree.hpp"
 #include "tree/ValueIo.hpp"
+#include "types/Complex.hpp"
 #include "types/Person.hpp"
 #include "ui/DoubleSum.hpp"
 
@@ -244,6 +245,64 @@ struct ElementTraits<double> {
              }},
             {"количество элементов", ReduceCount<double>},
             {"сцепить в строку", ReduceJoin<double>},
+        };
+        return MakeList(entries);
+    }
+};
+
+// =============================== Complex ===============================
+template <>
+struct ElementTraits<Complex> {
+    static const char* Name() { return "Complex"; }
+    static const char* ValueHint() { return "комплексное число (a,b), например (3,-2.5)"; }
+    static const char* KeyHint() { return ValueHint(); }
+    static const char* ExampleTree() { return "{(1,0)}({(0,1)}()[])[{(1,2)}()[]]"; }
+
+    static Complex Parse(const std::string& text) {
+        return ParseOrExplain<Complex>(text, ValueHint());
+    }
+    static Complex ParseKey(const std::string& text) { return Parse(text); }
+
+    static Complex Random(std::mt19937& rng, std::size_t n) {
+        const double real = ElementTraits<double>::Random(rng, n);
+        const double imaginary = ElementTraits<double>::Random(rng, n);
+        return Complex(real, imaginary);
+    }
+    static Complex Sequential(std::size_t i) {
+        return Complex(ElementTraits<double>::Sequential(i), 0);
+    }
+
+    static EntryList<MapEntry<Complex>> Maps() {
+        static const MapEntry<Complex> entries[] = {
+            {"сопряжённое число", [](const Complex& z) { return Complex(z.Real(), -z.Imaginary()); }},
+            {"противоположное число", [](const Complex& z) { return Complex(-z.Real(), -z.Imaginary()); }},
+            {"умножить на i", [](const Complex& z) { return Complex(-z.Imaginary(), z.Real()); }},
+        };
+        return MakeList(entries);
+    }
+
+    static EntryList<WhereEntry<Complex>> Wheres() {
+        static const WhereEntry<Complex> entries[] = {
+            {"вещественные числа", [](const Complex& z) { return z.Imaginary() == 0; }},
+            {"положительная мнимая часть", [](const Complex& z) { return z.Imaginary() > 0; }},
+        };
+        return MakeList(entries);
+    }
+
+    static EntryList<ReduceEntry<Complex>> Reduces() {
+        static const ReduceEntry<Complex> entries[] = {
+            {"сумма",
+             [](const BinarySearchTree<Complex>& tree, TraversalOrder order) {
+                 detail::DoubleSum real;
+                 detail::DoubleSum imaginary;
+                 tree.Traverse(order, [&](const Complex& value) {
+                     real.Add(value.Real());
+                     imaginary.Add(value.Imaginary());
+                 });
+                 return ToText(Complex(real.Result(), imaginary.Result()));
+             }},
+            {"количество элементов", ReduceCount<Complex>},
+            {"сцепить в строку", ReduceJoin<Complex>},
         };
         return MakeList(entries);
     }

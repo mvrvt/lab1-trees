@@ -12,7 +12,7 @@ namespace ui {
 
 inline void PrintTreeInfo(const char* title, const BinarySearchTree<int>& tree) {
     std::cout << title << " (элементов: " << tree.GetCount() << ", высота: " << tree.GetHeight() << "):\n";
-    tree.PrintVertical(std::cout, 1000); // маленькие деревья - ширина заведомо хватит
+    tree.PrintStructure(std::cout);
     std::cout << "\n";
 }
 

@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstddef>
 #include <sstream> // std::ostringstream - печать в строку
 #include <stdexcept>
@@ -263,86 +264,63 @@ TEST(Traversal, PrintStructure) {
     EXPECT_EQ(empty_out.str(), "(empty)\n");
 }
 
-// Печать "сверху вниз": узлы раскладываются по столбцам в порядке ЛКП
-TEST(Traversal, PrintVertical) {
-    BinarySearchTree<int> tree = MakeSampleTree();
-    std::ostringstream out;
-    EXPECT_TRUE(tree.PrintVertical(out, 100));
-    const std::string expected =
-        "      5\n"
-        "  ┌───┴───┐\n"
-        "  3       8\n"
-        "┌─┴─┐   ┌─┴─┐\n"
-        "1   4   7   9\n";
-    EXPECT_EQ(out.str(), expected);
-
-    BinarySearchTree<int> empty;
-    std::ostringstream empty_out;
-    EXPECT_TRUE(empty.PrintVertical(empty_out, 100));
-    EXPECT_EQ(empty_out.str(), "(empty)\n");
-}
-
-// Один ребёнок: линия загибается только в его сторону
-TEST(Traversal, PrintVerticalOneChild) {
+TEST(Traversal, PrintStructureOneChild) {
     BinarySearchTree<int> right_only(Balancing::kNone);
     right_only.Insert(1);
     right_only.Insert(2);
     std::ostringstream right_out;
-    right_only.PrintVertical(right_out, 100);
-    EXPECT_EQ(right_out.str(), "1\n└─┐\n  2\n");
+    right_only.PrintStructure(right_out);
+    EXPECT_EQ(right_out.str(), "┌── 2\n1\n");
 
     BinarySearchTree<int> left_only(Balancing::kNone);
     left_only.Insert(2);
     left_only.Insert(1);
     std::ostringstream left_out;
-    left_only.PrintVertical(left_out, 100);
-    EXPECT_EQ(left_out.str(), "  2\n┌─┘\n1\n");
+    left_only.PrintStructure(left_out);
+    EXPECT_EQ(left_out.str(), "2\n└── 1\n");
 }
 
-// Ширина считается в символах, а не в байтах: кириллица в UTF-8 - по 2 байта на букву
-TEST(Traversal, PrintVerticalUtf8) {
+TEST(Traversal, PrintStructureUtf8AndEmptyLabel) {
     BinarySearchTree<std::string> tree;
     tree.Insert("кот");
-    tree.Insert("арбуз");
+    tree.Insert("");
     tree.Insert("слон");
     std::ostringstream out;
-    EXPECT_TRUE(tree.PrintVertical(out, 100));
-    const std::string expected =
-        "      кот\n"
-        "  ┌────┴───┐\n"
-        "арбуз     слон\n";
-    EXPECT_EQ(out.str(), expected);
+    tree.PrintStructure(out);
+    EXPECT_EQ(out.str(), "┌── слон\nкот\n└── \"\"\n");
+
+    BinarySearchTree<std::string> empty_label;
+    empty_label.Insert("");
+    std::ostringstream root_out;
+    empty_label.PrintStructure(root_out);
+    EXPECT_EQ(root_out.str(), "\"\"\n");
 }
 
-// Не помещается в ширину - ничего не печатает и возвращает false
-TEST(Traversal, PrintVerticalTooWide) {
-    BinarySearchTree<int> tree = MakeSampleTree(); // ширина 13
-    std::ostringstream narrow;
-    EXPECT_FALSE(tree.PrintVertical(narrow, 12));
-    EXPECT_EQ(narrow.str(), "");
-    std::ostringstream exact;
-    EXPECT_TRUE(tree.PrintVertical(exact, 13));
-
-    // Большое дерево отбрасывается сразу по числу узлов: ширина не меньше 2n - 1
-    BinarySearchTree<int> big;
-    for (int value = 0; value < 100000; ++value)
-        big.Insert(value);
-    std::ostringstream big_out;
-    EXPECT_FALSE(big.PrintVertical(big_out, 200));
-    EXPECT_EQ(big_out.str(), "");
+TEST(Traversal, PrintStructureDistinctDoubleLabels) {
+    BinarySearchTree<double> tree;
+    tree.Insert(1.0);
+    tree.Insert(std::nextafter(1.0, 2.0));
+    std::ostringstream out;
+    tree.PrintStructure(out);
+    EXPECT_EQ(out.str(), "┌── 1.0000000000000002\n1\n");
 }
 
-// "Палка" без балансировки: по две строки холста на уровень (узлы и линии), минус одна
-TEST(Traversal, PrintVerticalDegenerate) {
+TEST(Traversal, PrintStructureDegenerate) {
     BinarySearchTree<int> tree(Balancing::kNone);
-    const int n = 200;
+    constexpr int n = 200;
     for (int value = 0; value < n; ++value)
         tree.Insert(value);
     std::ostringstream out;
-    ASSERT_TRUE(tree.PrintVertical(out, 100000));
-    std::string text = out.str();
-    std::size_t lines = 0;
-    for (char symbol : text)
-        lines += symbol == '\n' ? 1 : 0;
-    EXPECT_EQ(lines, static_cast<std::size_t>(2 * n - 1));
+    tree.PrintStructure(out);
+
+    std::istringstream lines(out.str());
+    std::string line;
+    for (int value = n - 1; value > 0; --value) {
+        ASSERT_TRUE(std::getline(lines, line));
+        EXPECT_EQ(line, std::string(static_cast<std::size_t>(value - 1) * 4, ' ') +
+                            "┌── " + std::to_string(value));
+    }
+    ASSERT_TRUE(std::getline(lines, line));
+    EXPECT_EQ(line, "0");
+    EXPECT_FALSE(std::getline(lines, line));
 }

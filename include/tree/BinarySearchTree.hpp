@@ -12,7 +12,6 @@
 #include "lab2_files/IEnumerable.hpp"
 #include "tree/TreeExceptions.hpp"
 #include "tree/TreeFormat.hpp"
-#include "tree/TextCanvas.hpp"
 #include "tree/TreeParser.hpp"
 #include "tree/Traversal.hpp"
 #include "tree/ValueIo.hpp"
@@ -565,98 +564,8 @@ public:
     }
 
     // ---------- Печать структуры ----------
-    // Обычный вид "сверху вниз", как рисуют на доске:
-    //       5
-    //   ┌───┴───┐
-    //   3       8
-    // ┌─┴─┐   ┌─┴─┐
-    // 1   4   7   9
-    // Идея раскладки: у каждого узла свои столбцы, а узлы идут слева направо в порядке
-    // ЛКП (по возрастанию). Поэтому подписи никогда не налезают друг на друга,
-    // левое поддерево всегда левее узла, правое - правее. Строка узлов глубины d - это
-    // строка 2d холста, под ней (2d + 1) - линии к детям.
-    // Ширина = сумма ширин подписей + по пробелу между ними, то есть не меньше 2n - 1.
-    // Если она больше max_width, ничего не печатает и возвращает false: широкое дерево
-    // в терминале "разъедется" (тогда остаётся PrintStructure - дерево на боку).
-    // Без рекурсии: оба прохода идут со своим стеком.
-    bool PrintVertical(std::ostream& out, std::size_t max_width) const {
-        if (!root_) {
-            out << "(empty)\n";
-            return true;
-        }
-        constexpr std::size_t kGap = 1; // пробелов между соседними подписями
-        if (2 * size_ - 1 > max_width)
-            return false; // даже однобуквенные подписи не поместятся - подписи можно не строить
-
-        // Проход 1 (ЛКП): подписи и их столбцы. i-й узел по возрастанию занимает
-        // столбцы [starts[i], starts[i] + ширина), его "центр" - centers[i].
-        DynamicArray<std::string> labels;
-        DynamicArray<std::size_t> starts;
-        DynamicArray<std::size_t> centers;
-        std::size_t width = 0;
-        TraverseNodes(root_.get(), GetTraversalSteps(TraversalOrder::kLNR), [&](const Node* node) {
-            std::string label = ToText(node->value);
-            if (label.empty())
-                label = "\"\""; // пустую строку показываем как "", иначе узла не видно
-            std::size_t label_width = DisplayWidth(label);
-            if (width > 0)
-                width += kGap;
-            starts.Append(width);
-            centers.Append(width + (label_width - 1) / 2);
-            width += label_width;
-            labels.Append(label);
-        });
-        if (width > max_width)
-            return false;
-
-        // Проход 2 (КЛП): рисуем. Номер узла в порядке ЛКП знаем без поиска -
-        // по размерам поддеревьев: у левого ребёнка номер меньше на (размер его правого
-        // поддерева + 1), у правого больше на (размер его левого поддерева + 1).
-        struct Item {
-            const Node* node;
-            std::size_t index; // номер в порядке ЛКП
-            std::size_t depth;
-        };
-        TextCanvas canvas(2 * GetHeight() - 1, width);
-        DynamicArray<Item> stack;
-        stack.Append(Item{root_.get(), Size(root_->left.get()), 0});
-        while (!stack.IsEmpty()) {
-            Item item = stack.GetLast();
-            stack.RemoveLast();
-            const Node* node = item.node;
-            std::size_t row = 2 * item.depth;
-            std::size_t center = centers[item.index];
-            canvas.PutText(row, starts[item.index], labels[item.index]);
-
-            // Линии к детям:  ┌───┴───┐  (только левый ребёнок: ┌───┘, только правый: └───┐)
-            if (node->left) {
-                std::size_t left_index = item.index - Size(node->left->right.get()) - 1;
-                canvas.Put(row + 1, centers[left_index], "┌");
-                for (std::size_t column = centers[left_index] + 1; column < center; ++column)
-                    canvas.Put(row + 1, column, "─");
-                stack.Append(Item{node->left.get(), left_index, item.depth + 1});
-            }
-            if (node->right) {
-                std::size_t right_index = item.index + Size(node->right->left.get()) + 1;
-                for (std::size_t column = center + 1; column < centers[right_index]; ++column)
-                    canvas.Put(row + 1, column, "─");
-                canvas.Put(row + 1, centers[right_index], "┐");
-                stack.Append(Item{node->right.get(), right_index, item.depth + 1});
-            }
-            if (node->left && node->right)
-                canvas.Put(row + 1, center, "┴");
-            else if (node->left)
-                canvas.Put(row + 1, center, "┘");
-            else if (node->right)
-                canvas.Put(row + 1, center, "└");
-        }
-        canvas.Print(out);
-        return true;
-    }
-
     // Дерево "лёжа на боку": корень слева, правое поддерево сверху, левое снизу.
-    // Ширина растёт только с высотой, поэтому годится и для широких деревьев,
-    // которые PrintVertical не помещает в терминал.
+    // Каждый узел занимает строку. Отступ зависит от его глубины.
     //     ┌── 9
     // ┌── 8
     // │   └── 7
@@ -671,7 +580,7 @@ public:
         }
         if (root_->right)
             PrintBranch(out, root_->right.get(), false);
-        out << root_->value << "\n";
+        PrintNodeLabel(out, root_->value);
         if (root_->left)
             PrintBranch(out, root_->left.get(), true);
     }
@@ -1008,6 +917,11 @@ private:
         }
     }
 
+    static void PrintNodeLabel(std::ostream& out, const T& value) {
+        const std::string label = ToText(value);
+        out << (label.empty() ? "\"\"" : label) << '\n';
+    }
+
     static void PrintBranch(std::ostream& out, const Node* node, bool is_left) {
         struct Frame {
             const Node* node;
@@ -1029,7 +943,8 @@ private:
                 }
             } else if (frame.step == 1) {
                 ++frame.step;
-                out << prefix << (frame.is_left ? "└── " : "┌── ") << frame.node->value << '\n';
+                out << prefix << (frame.is_left ? "└── " : "┌── ");
+                PrintNodeLabel(out, frame.node->value);
                 if (frame.node->left) {
                     const std::size_t length = prefix.size();
                     prefix += frame.is_left ? "    " : "│   ";

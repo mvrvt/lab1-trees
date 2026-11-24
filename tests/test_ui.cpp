@@ -116,3 +116,50 @@ TEST(Ui, DoubleAccumulatorRoundsSubnormalMean) {
     sum.Add(smallest * 2);
     EXPECT_EQ(sum.Result(2), smallest * 2); // 1,5 единицы округляются к двум.
 }
+
+TEST(Ui, ComplexMenuSupportsInputTraversalAndFunctionalOperations) {
+    ConsoleSession console(
+        "3\n\n{(1,0)}({(0,1)}()[])[{(1,2)}()[]]\n"
+        "1\n(2,x)\n(2,1)\n6\n(1,2)\n8\n1\n"
+        "12\nЛКП\n13\ny\n(1,0)\n14\n3\nn\n15\n2\nn\n16\n1\nЛКП\n"
+        "17\n(Л){К}[П]\n4\n(2,1)\n6\n(2,1)\n22\n0\n");
+    ui::RunTreeMenu<Complex>(Balancing::kAvl);
+    const std::string output = console.GetOutput();
+    for (const char* expected : {
+             "┌── (1,2)\n(1,0)\n└── (0,1)\n", "Прочитано элементов: 3", "Неверное значение", "Добавлен.",
+             "Найден: (1,2)", "Get(1) = (1,0)", "Прошивка ЛКП.",
+             "(1,0), (1,2), (2,1)", "По возрастанию: (-2,1), (-1,0), (-1,2), (0,1)",
+             "По возрастанию: (0,1), (1,2), (2,1)", "Reduce(сумма, ЛКП) = (4,4)",
+             "((){(0,1)}[]){(1,0)}[(){(1,2)}[(){(2,1)}[]]]", "Удалён.", "Не найден.",
+             "Дерево корректно"}) {
+        EXPECT_NE(output.find(expected), std::string::npos) << expected;
+    }
+}
+
+TEST(Ui, ComplexSumPreservesSmallRealAndImaginaryComponents) {
+    ConsoleSession console(
+        "3\n\n{(3,5)}({(-1e308,-1e308)}()[])[{(1e308,1e308)}()[]]\n16\n1\nЛКП\n0\n");
+    ui::RunTreeMenu<Complex>(Balancing::kNone);
+    EXPECT_NE(console.GetOutput().find("Reduce(сумма, ЛКП) = (3,5)"), std::string::npos);
+}
+
+TEST(Ui, StructurePrintingLimits) {
+    ConsoleSession console("2\n2\n64\n1\n65\n10\nn\n10\ny\n5\n2\n2\n2001\n10\n0\n");
+    ui::RunTreeMenu<int>(Balancing::kAvl);
+    const std::string output = console.GetOutput();
+
+    const auto summary = output.find("дерево большое: 65 элементов");
+    ASSERT_NE(summary, std::string::npos);
+    const auto first_prompt = output.find("Печатать структуру? (y/n): ", summary);
+    ASSERT_NE(first_prompt, std::string::npos);
+    const auto second_prompt = output.find("Печатать структуру? (y/n): ", first_prompt + 1);
+    ASSERT_NE(second_prompt, std::string::npos);
+    EXPECT_EQ(output.find("┌──", first_prompt), output.find("┌──", second_prompt));
+    const auto structure = output.find("┌──", second_prompt);
+    ASSERT_NE(structure, std::string::npos);
+    const auto values = output.find("Элементы (operator<<): ", structure);
+    ASSERT_NE(values, std::string::npos);
+    EXPECT_NE(output.find("Дерево слишком большое для печати (2001 элементов, предел 2000)", values),
+              std::string::npos);
+    EXPECT_EQ(output.find("Элементы (operator<<): ", values + 1), std::string::npos);
+}

@@ -71,6 +71,7 @@ add_executable(tests
     tests/test_string_io.cpp
     tests/test_subtree_ops.cpp
     tests/test_person.cpp
+    tests/test_complex.cpp
     tests/test_ui.cpp
 )
 # gtest_main даёт готовую функцию main, которая запускает все TEST(...)
