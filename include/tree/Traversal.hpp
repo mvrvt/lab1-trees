@@ -48,7 +48,7 @@ inline TraversalSteps GetTraversalSteps(TraversalOrder order) {
     throw std::invalid_argument("GetTraversalSteps: unknown order"); // сюда не попадём
 }
 
-// "КЛП", "КПЛ", ... (строка в кодировке UTF-8)
+// "КЛП", "КПЛ", ... 
 inline std::string ToString(TraversalOrder order) {
     switch (order) {
     case TraversalOrder::kNLR: return "КЛП";

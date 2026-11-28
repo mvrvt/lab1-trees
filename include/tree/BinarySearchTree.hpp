@@ -41,7 +41,6 @@ template <typename T>
 class BinarySearchTree : public ICollection<T>, public IEnumerable<T> {
 public:
     using Node = TreeNode<T>;
-    // Результат IndexOf, если эл-нт не найден
     static constexpr std::size_t kNotFound = static_cast<std::size_t>(-1);
 
     // ---------- Итератор для IEnumerable: симметричный обход (ЛКП), по возрастанию ----------
@@ -54,7 +53,7 @@ public:
         bool MoveNext() override {
             if (!started_) {
                 started_ = true;
-                PushLeftPath(root_); // самый маленький эл-нт - в конце левого пути
+                PushLeftPath(root_); 
             } else if (current_ != nullptr) {
                 // Следующий после current_ - самый левый узел его правого поддерева,
                 // а если правого поддерева нет - ближайший предок, лежащий в стеке
@@ -224,17 +223,11 @@ public:
         return result;
     }
 
-    // Итератор для IEnumerable (его удаляет вызывающий). Цикл for (const T& x : tree)
-    // делает это сам - см. EnumeratorIterator в IEnumerable.hpp
+    // Итератор для IEnumerable (его удаляет вызывающий). Цикл for (const T& x : tree).
     IEnumerator<T>* GetEnumerator() const override { return new TreeEnumerator(root_.get()); }
 
     // ---------- Прошивка ----------
     // Узлы связываются в цепочку через next в порядке обхода order (любой из 6).
-    // После этого обход идёт по цепочке: без стека и без рекурсии, каждый шаг строго O(1),
-    // и начать его можно с любого узла (основа поиска по диапазону в ЛР-2).
-    // Любое изменение дерева (Insert, Remove, Clear) прошивку сбрасывает:
-    // повороты AVL меняют форму, а с ней порядки КЛП, ЛПК и др. Нужно вызвать Thread снова.
-
     // Прошить дерево в заданном порядке. O(n) время, O(h) память (на время прошивки).
     void Thread(TraversalOrder order) {
         const TraversalSteps steps = GetTraversalSteps(order);
@@ -286,18 +279,8 @@ public:
     }
 
     // ---------- map, where, reduce ----------
-    // func / predicate - функция, лямбда или указатель на функцию (шаблон принимает всё).
-    // Исходное дерево не меняется. Режим балансировки результата - как у исходного.
-
+    // func/predicate - функция, лямбда или указатель на функцию (шаблон принимает всё).
     // Новое дерево из значений func(x) для каждого x. O(n log n) для AVL.
-    // U - тип элементов результата, по умолчанию T: tree.Map(f).
-    // Можно получить дерево другого типа: tree.Map<std::string>(f).
-    // - Новое дерево строится вставками, а не копированием формы: func может
-    //   нарушить порядок (f(x) = -x разворачивает его).
-    // - Элементов может стать меньше: если f склеивает значения (f(x) = x / 10),
-    //   одинаковые результаты в множестве хранятся один раз.
-    // - Вставка в порядке КЛП (родители раньше детей): для возрастающей f и режима kNone
-    //   форма дерева сохраняется, а вставка по возрастанию выродила бы его в "палку".
     template <typename U = T, typename Func>
     BinarySearchTree<U> Map(Func func) const {
         BinarySearchTree<U> result(balancing_);
@@ -320,7 +303,6 @@ public:
     // То есть func(элемент, накопленное) -> новое накопленное, начиная с initial.
     // Элементы берутся в порядке order (по умолчанию ЛКП - по возрастанию). O(n).
     // T2 - тип результата, выводится из initial: сумма int в long long - Reduce(f, 0LL).
-    // Для пустого дерева возвращает initial.
     template <typename T2, typename Func>
     T2 Reduce(Func func, T2 initial, TraversalOrder order = TraversalOrder::kLNR) const {
         T2 accumulator = std::move(initial);
@@ -333,7 +315,6 @@ public:
     // Сохранить дерево в строку по формату (см. TreeFormat.hpp), например:
     //   дерево 5 / 3 8, формат "{К}(Л)[П]"  ->  "{5}({3}()[])[{8}()[]]"
     //   то же дерево, формат "(Л){К}[П]"    ->  "((){3}[]){5}[(){8}[]]"
-    // Пустое поддерево - пустые скобки, пустое дерево - пустая строка.
     // Закрывающая скобка К и '\' внутри значений экранируются через '\'.
     // Бросает TreeFormatError, если формат неверный. O(n), без рекурсии.
     std::string ToFormattedString(const std::string& format = kDefaultTreeFormat) const {
@@ -676,11 +657,6 @@ private:
         return nullptr;
     }
 
-    // Обход в любом из 6 порядков БЕЗ рекурсии, со своим стеком.
-    // Для каждого узла в стеке помним, сколько из трёх его действий (К, Л, П) уже сделано.
-    // visit вызывается с указателем на узел.
-    // NodePtr - тип указателя: const Node* (для обходов только чтения)
-    // или Node* (для Thread, которая записывает в узлы next).
     template <typename NodePtr, typename Func>
     static void TraverseNodes(NodePtr root, const TraversalSteps& steps, Func visit) {
         struct Frame {
@@ -694,11 +670,9 @@ private:
         while (!stack.IsEmpty()) {
             Frame& top = stack.GetLast();
             if (top.done_steps == 3) {
-                stack.RemoveLast(); // все три действия в этом узле сделаны
+                stack.RemoveLast(); 
                 continue;
             }
-            // Копируем всё нужное ДО Append: при росте массива ссылка top
-            // станет висячей (старый буфер удаляется)
             NodePtr node = top.node;
             TraversalStep step = steps.steps[top.done_steps];
             ++top.done_steps;
@@ -812,7 +786,6 @@ private:
 
     // ---------- AVL: высоты, баланс, повороты ----------
 
-    // Высота поддерева; у пустого поддерева (nullptr) - 0
     static int Height(const Node* node) { return node ? node->height : 0; }
 
     static std::size_t Size(const Node* node) { return node ? node->size : 0; }
@@ -830,35 +803,18 @@ private:
         return Height(node->left.get()) - Height(node->right.get());
     }
 
-    /* Правый поворот вокруг node:
-
-              node              L
-             /    \           /   \
-            L      C   ->    A    node
-           / \                    /  \
-          A   B                  B    C
-
-       Порядок A < L < B < node < C не меняется - меняется только форма. */
     static void RotateRight(std::unique_ptr<Node>& node) {
-        std::unique_ptr<Node> new_root = std::move(node->left); // L
-        node->left = std::move(new_root->right);                // В переходит к node
+        std::unique_ptr<Node> new_root = std::move(node->left); 
+        node->left = std::move(new_root->right);
         UpdateNode(node.get());
         new_root->right = std::move(node); 
         UpdateNode(new_root.get());
         node = std::move(new_root);
     }
 
-    /* Левый поворот вокруг node - зеркальное отражение правого:
-
-            node                  R
-           /    \               /   \
-          A      R      ->    node   C
-                / \           /  \
-               B   C         A    B
-    */
     static void RotateLeft(std::unique_ptr<Node>& node) {
-        std::unique_ptr<Node> new_root = std::move(node->right); // R
-        node->right = std::move(new_root->left);                 // B переходит к node
+        std::unique_ptr<Node> new_root = std::move(node->right); 
+        node->right = std::move(new_root->left); 
         UpdateNode(node.get());
         new_root->left = std::move(node);
         UpdateNode(new_root.get());
@@ -976,9 +932,6 @@ BinarySearchTree<T> operator-(const BinarySearchTree<T>& a, const BinarySearchTr
     return result;
 }
 
-// Равенство МНОЖЕСТВ элементов, форма не важна (как у std::set): AVL-дерево и
-// обычное дерево из одних и тех же значений равны. Сравнить форму можно через
-// ContainsSubtree или ToFormattedString. O(n): два итератора идут по возрастанию параллельно.
 template <typename T>
 bool operator==(const BinarySearchTree<T>& a, const BinarySearchTree<T>& b) {
     if (a.GetCount() != b.GetCount())
